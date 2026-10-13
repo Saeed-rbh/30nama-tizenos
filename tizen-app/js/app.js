@@ -227,17 +227,10 @@
     }).catch(bootError);
   }
 
-  // Scale the 1920x1080 stage on smaller windows (desktop testing). No-op on a 1080p TV.
+  // Scale the 1920x1080 stage down for desktop preview only. Never scale up
+  // (UHD TVs that report 3840x2160 would otherwise get a blurry CSS 2x).
   function fit() {
-    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080), r = document.documentElement;
-    if (Math.abs(s - 1) < 0.01) { r.style.transform = ''; return; }
-    r.style.transform = 'scale(' + s + ')'; r.style.transformOrigin = '0 0';
-  }
-  window.addEventListener('resize', fit);
-
-  // Scale the 1920x1080 stage down on smaller windows (desktop testing). No-op on a 1080p TV.
-  function fit() {
-    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080), r = document.documentElement;
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080, 1), r = document.documentElement;
     if (Math.abs(s - 1) < 0.01) { r.style.transform = ''; return; }
     r.style.transform = 'scale(' + s + ')'; r.style.transformOrigin = '0 0';
   }
@@ -247,7 +240,6 @@
     fit();
     content = $('content');
     if (N.store.get('calm', false)) document.body.classList.add('calm');
-    fit();
     N.nav.registerKeys();
     splash.dotsT = setTimeout(function () { var d = document.querySelector('#splash .dots3'); if (d) d.classList.add('on'); }, 1800);
     splash.failT = setTimeout(splashExit, 10000);
