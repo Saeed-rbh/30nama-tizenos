@@ -47,7 +47,21 @@ jobs:
           trap 'echo "--- tizen cli.log ---"; tail -n 80 "$HOME"/tizen-studio-data/cli/logs/cli.log 2>/dev/null || find "$HOME" -name cli.log -exec tail -n 80 {} \;' ERR
           CERT_PW="$(openssl rand -hex 12)"
           tizen certificate -a 30nama-community -p "$CERT_PW" -f throwaway -- "$PWD/stage"
-          tizen security-profiles add -n ci -a "$PWD/stage/throwaway.p12" -p "$CERT_PW"
+          # The Linux CLI stores profile passwords in an encrypted form it then rejects
+          # ("Invaild password"), so write profiles.xml with plaintext passwords instead.
+          DIST="$HOME/tizen-studio/tools/certificate-generator/certificates/distributor"
+          mkdir -p "$HOME/tizen-studio-data/profile"
+          cat > "$HOME/tizen-studio-data/profile/profiles.xml" <<EOF
+          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+          <profiles active="ci" version="3.1">
+          <profile name="ci">
+          <profileitem ca="" distributor="0" key="$PWD/stage/throwaway.p12" password="$CERT_PW" rootca=""/>
+          <profileitem ca="$DIST/tizen-distributor-ca.cer" distributor="1" key="$DIST/tizen-distributor-signer.p12" password="tizenpkcs12passfordsigner" rootca=""/>
+          <profileitem ca="" distributor="2" key="" password="" rootca=""/>
+          </profile>
+          </profiles>
+          EOF
+          sed -i 's/^ *//' "$HOME/tizen-studio-data/profile/profiles.xml"
           tizen cli-config "profiles.path=$HOME/tizen-studio-data/profile/profiles.xml"
           tizen build-web -out "$PWD/stage/out" -- "$PWD/stage/web"
           mkdir -p dist
