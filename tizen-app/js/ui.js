@@ -26,9 +26,10 @@
   };
 
   /* ---------- images ---------- */
+  /* Prefer medium for row/grid cards — large over-fetches on 2018 SoCs. */
   ui.posterUrl = function (p) {
     var po = p && p.image && p.image.poster; if (!po) return '';
-    return (po.webp && (po.webp.large || po.webp.medium)) || (po.jpg && (po.jpg.large || po.jpg.medium)) || '';
+    return (po.webp && (po.webp.medium || po.webp.large)) || (po.jpg && (po.jpg.medium || po.jpg.large)) || '';
   };
   ui.coverUrl = function (p) { var c = p && p.image && p.image.cover; return c ? (c.webp || c.jpg || '') : ''; };
   ui.load = function (c) {

@@ -14,7 +14,7 @@
     var c = cover && (cover.webp || cover.jpg);
     if (post && post._bd && (post._bdPref || !c)) return { src: post._bd, bleed: false, id: post.id };
     if (c) return { src: c, bleed: false, id: post.id };
-    var po = post && post.image && post.image.poster, p = po && ((po.webp && (po.webp.large || po.webp.medium)) || (po.jpg && (po.jpg.large || po.jpg.medium)));
+    var po = post && post.image && post.image.poster, p = po && ((po.webp && (po.webp.medium || po.webp.large)) || (po.jpg && (po.jpg.medium || po.jpg.large)));
     if (p) return { src: p, bleed: true, id: post.id };
     return null;
   };

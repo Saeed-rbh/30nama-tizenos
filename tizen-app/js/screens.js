@@ -743,13 +743,15 @@
         posts.forEach(function (p, i) {
           var cell = ui.cell(p); if (i < 12) { cell.classList.add('fadein'); cell.style.animationDelay = (i * 15) + 'ms'; }
           cell.card.onclick = function () { N.go('details', { id: p.id }); };
-          cell.card.onfocus2 = function () { if (i < 15) { for (var k = 0; k < rg.children.length && k < 40; k++) { var cc = rg.children[k].card; if (cc) ui.load(cc); } } };
+          cell.card.onfocus2 = function () {
+            var lo = Math.max(0, i - 4), hi = Math.min(rg.children.length, i + 12);
+            for (var k = lo; k < hi; k++) { var cc = rg.children[k].card; if (cc) ui.load(cc); }
+          };
           rg.appendChild(cell);
         });
-        for (var k = 0; k < rg.children.length && k < 15; k++) if (rg.children[k].card) ui.load(rg.children[k].card);
+        for (var k = 0; k < rg.children.length && k < 12; k++) if (rg.children[k].card) ui.load(rg.children[k].card);
         rw.style.transition = 'none'; rw._ty = null; rw.style.transform = ''; void rw.offsetWidth; rw.style.transition = '';
         rg.classList.remove('sw');
-        for (var j = 0; j < rg.children.length; j++) if (rg.children[j].card) ui.load(rg.children[j].card);
       }, 120);
     }
     function popular(msg) {
