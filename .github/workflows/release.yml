@@ -65,7 +65,7 @@ jobs:
           tizen cli-config "profiles.path=$HOME/tizen-studio-data/profile/profiles.xml"
           tizen build-web -out "$PWD/stage/out" -- "$PWD/stage/web"
           mkdir -p dist
-          { echo "$CERT_PW"; echo tizenpkcs12passfordsigner; } | tizen package -t wgt -s ci -o "$PWD/dist" -- "$PWD/stage/out"
+          { sleep 4; echo "$CERT_PW"; sleep 2; echo tizenpkcs12passfordsigner; sleep 2; } | script -qec "tizen package -t wgt -s ci -o $PWD/dist -- $PWD/stage/out" /dev/null
           ls -l dist
           rm -f stage/throwaway.p12
 
