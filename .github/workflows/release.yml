@@ -55,7 +55,7 @@ jobs:
           <?xml version="1.0" encoding="UTF-8" standalone="no"?>
           <profiles active="ci" version="3.1">
           <profile name="ci">
-          <profileitem ca="" distributor="0" key="$PWD/stage/throwaway.p12" password="$CERT_PW" rootca=""/>
+          <profileitem ca="" distributor="0" key="$PWD/stage/throwaway.p12" password="" rootca=""/>
           <profileitem ca="$DIST/tizen-distributor-ca.cer" distributor="1" key="$DIST/tizen-distributor-signer.p12" password="tizenpkcs12passfordsigner" rootca=""/>
           <profileitem ca="" distributor="2" key="" password="" rootca=""/>
           </profile>
@@ -65,7 +65,9 @@ jobs:
           tizen cli-config "profiles.path=$HOME/tizen-studio-data/profile/profiles.xml"
           tizen build-web -out "$PWD/stage/out" -- "$PWD/stage/web"
           mkdir -p dist
-          tizen package -t wgt -s ci -o "$PWD/dist" -- "$PWD/stage/out"
+          printf '%s
+%s
+' "$CERT_PW" "tizenpkcs12passfordsigner" | tizen package -t wgt -s ci -o "$PWD/dist" -- "$PWD/stage/out"
           ls -l dist
           rm -f stage/throwaway.p12
 
