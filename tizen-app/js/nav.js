@@ -35,6 +35,7 @@
     else if (document.activeElement && document.activeElement.tagName === 'INPUT') { document.activeElement.blur(); }
     if (!noScroll) nav.ensureVisible(el);
     if (nav.onFocusChange) nav.onFocusChange(el);
+    if (el._mq) N.ui.mqFit(el._mq);
     if (el.onfocus2) el.onfocus2(el);
   };
   nav.focusFirst = function (container) {

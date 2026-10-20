@@ -374,13 +374,13 @@
     var info = next.info || {};
     u.querySelector('.u1').textContent = N.t('nextEpisode');
     u.querySelector('.u2').textContent = 'S' + (info.season || 1) + ' · E' + N.ui.epLabel(info.episode, P.index + 2);
-    u.querySelector('.u3').textContent = N.ui.epName(next) || N.title(P.post);
+    var u3 = N.ui.mq(N.ui.epName(next) || N.title(P.post), 'u3'), o3 = u.querySelector('.u3'); o3.parentNode.replaceChild(u3, o3);
     var cv = N.ui.coverUrl(P.post) || N.ui.posterUrl(P.post);
     u.querySelector('.th').style.backgroundImage = cv ? 'url("' + cv + '")' : '';
     $('un-play').textContent = N.t('playNow'); $('un-cred').textContent = N.t('credits');
     unState = { sel: 'play', dismissed: false, auto: auto, active: false };
     uSel();
-    u.classList.remove('hold', 'count'); u.classList.add('show');
+    u.classList.remove('hold', 'count'); u.classList.add('show'); N.ui.mqFit(u3);
     if (auto) { void u.offsetWidth; u.classList.add('count'); }
     u.querySelector('.cd').style.display = auto ? '' : 'none';
     u.querySelector('.cd').onanimationend = function () { if (unState && unState.auto) { P.hideUpNext(true); P.playIndex(P.index + 1); } };

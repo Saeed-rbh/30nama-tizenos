@@ -189,7 +189,7 @@
       var d = r.d, c = ui.card(p, d.kind, { rank: i + 1 });
       if (d.kind === 'land') {
         var n = cwNorm(d.raw[i] || p), lb = n.label || N.title(p);
-        c.appendChild(el('div', 'lbl', lb));
+        c._mq = ui.mq(lb, 'lbl'); c.appendChild(c._mq);
         if (n.prog > 0) { var pb = el('div', 'prog'), pi = el('i'); pi.style.transform = 'scaleX(' + n.prog.toFixed(3) + ')'; pb.appendChild(pi); c.appendChild(pb); }
       }
       c.onfocus2 = function () { onCardFocus(defs.indexOf(d), i); };
@@ -572,12 +572,13 @@
         var c = el('div', 'card f k-face'), ph = el('div', 'fph');
         ph.appendChild(el('span', '', initials(p.n)));
         if (p.p) { var im = el('img', 'im'); im.alt = ''; im.decoding = 'async'; im.onload = function () { im.classList.add('in'); }; im.src = N.tmdb.img(p.p, 'w185'); ph.appendChild(im); }
-        c.appendChild(ph); c.appendChild(el('div', 'fnm', p.n)); c.appendChild(el('div', 'frl', role || ''));
+        c._mq = [ui.mq(p.n, 'fnm'), ui.mq(role || '', 'frl')];
+        c.appendChild(ph); c.appendChild(c._mq[0]); c.appendChild(c._mq[1]);
         return c;
       }
       function revCard(rv) {
         var c = el('div', 'card f k-rev'), h = el('div', 'rvh');
-        h.appendChild(el('span', 'rva', rv.a || '-'));
+        c._mq = ui.mq(rv.a || '-', 'rva'); h.appendChild(c._mq);
         if (rv.r) h.appendChild(el('span', 'rvr tab', '★ ' + rv.r));
         c.appendChild(h); c.appendChild(el('div', 'rvt', rv.t.replace(/\s+/g, ' ')));
         c.onclick = function () { openReview(rv); };
