@@ -448,10 +448,12 @@
         backToSheet = epsOpen; lastFocus = epsOpen ? null : N.nav.cur; if (epsOpen) { epMem[curS] = i; clearTimeout(swT); swT = null; hideEps(); }
         N.player.start(post, items, i, withResume ? resume : null);
       }
-      var info0 = items[startIdx] && items[startIdx].info || {};
-      var playLabel = resume ? N.t('resume') + (isSeries ? ' S' + (info0.season || 1) + '·E' + ui.epLabel(info0.episode, startIdx + 1) : '') : N.t('play');
+      function playLabel() {
+        var info0 = items[startIdx] && items[startIdx].info || {};
+        return resume ? N.t('resume') + (isSeries ? ' S' + (info0.season || 1) + '·E' + ui.epLabel(info0.episode, startIdx + 1) : '') : N.t('play');
+      }
       var playB;
-      if (items.length) playB = ui.btn(playLabel, function () { play(startIdx, true); }, 'primary', 'play');
+      if (items.length) playB = ui.btn(playLabel(), function () { play(startIdx, true); }, 'primary', 'play');
       else playB = ui.btn(N.t('play'), function () { N.toast(N.isLoggedIn() ? N.t('noStream') : N.t('playLogin'), 3500); }, 'primary', 'play');
       btns.appendChild(playB);
       var epB = null;
@@ -666,6 +668,17 @@
       }
       if (tmOn) N.tmdb.details(post).then(function (d) { if (!dead && d) paintTmdb(d); }).catch(function () {});
       current.onPlayerClosed = function () {
+        var last = N.player.last, found = -1;
+        if (last && String(last.post_id) === String(post.id)) {
+          items.forEach(function (it, i) {
+            if (it.info && String(it.info.file_id) === String(last.file_id)) found = i;
+          });
+          if (found >= 0) {
+            resume = { file_id: last.file_id, time: last.time, duration: last.duration };
+            startIdx = found;
+            playB.lastChild.textContent = playLabel();
+          }
+        }
         if (backToSheet && sheet) { backToSheet = false; openEps(N.player.index, true); return; } // same season, on the episode just played (or the one autoplay moved to)
         var t = lastFocus && document.body.contains(lastFocus) && lastFocus.offsetWidth > 0 ? lastFocus : playB; N.nav.focus(t, true);
       };

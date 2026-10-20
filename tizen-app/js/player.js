@@ -4,7 +4,7 @@
   var P = N.player = {
     open: false, items: [], index: 0, post: null, be: null, paused: false,
     cues: [], subLang: 'off', subCache: {}, hbTimer: null, tickTimer: null, osdTimer: null,
-    menuOpen: false, seekAcc: 0, seekTimer: null, skip: null, resume: null
+    menuOpen: false, seekAcc: 0, seekTimer: null, skip: null, resume: null, last: null, reportT: null
   };
   var hasAV = function () { return !!(window.webapis && window.webapis.avplay); };
 
@@ -199,6 +199,7 @@
   P.playIndex = function (i) {
     var item = P.items[i]; if (!item) return;
     P.reportNow();
+    clearTimeout(P.reportT);
     if (P.be) P.be.stop();
     P.index = i; P.paused = false; P.cues = []; P.subLang = N.store.get('sub', 'off');
     $('subtitle').textContent = ''; P.hideSkip(); P.hideUpNext(true); P.closeEps(true);
@@ -222,8 +223,13 @@
       var subs = availableSubs(item);
       var want = P.subLang; if (want !== 'off' && subs.indexOf(want) < 0) want = 'off';
       P.setSub(want); P.showOsd();
+      // The first regular heartbeat is 10 s away. Report shortly after playback
+      // begins so a newly autoplayed episode is persisted even when it is exited
+      // before that first heartbeat.
+      clearTimeout(P.reportT);
+      P.reportT = setTimeout(function () { if (P.be === be0) P.report(); }, 3000);
+      clearInterval(P.hbTimer); P.hbTimer = setInterval(P.report, N.config.heartbeatMs);
     }); } catch (e) { P.onError(String(e && e.message || e)); }
-    clearInterval(P.hbTimer); P.hbTimer = setInterval(P.report, N.config.heartbeatMs);
     P.seekAcc = 0; $('scrub').classList.remove('seeking');
     P.tick();
   };
@@ -231,7 +237,7 @@
     if (!P.open) return;
     // a throw here would leave P.open set and every later Back stuck on a dead player
     try { P.reportNow(); } catch (e) {}
-    clearInterval(P.hbTimer); clearInterval(P.tickTimer); clearTimeout(P.osdTimer); clearTimeout(P.seekTimer); clearTimeout(P.loadT);
+    clearInterval(P.hbTimer); clearInterval(P.tickTimer); clearTimeout(P.osdTimer); clearTimeout(P.seekTimer); clearTimeout(P.loadT); clearTimeout(P.reportT);
     try { if (P.be) P.be.stop(); } catch (e) {}
     P.be = null; P.loading = false;
     P.closeMenu(true); P.closeEps(true); P.hideUpNext(true); P.hideSkip();
@@ -245,16 +251,39 @@
   P.onEnded = function () { if (P.index + 1 < P.items.length) P.playIndex(P.index + 1); else P.close(); };
 
   /* ---------- progress reporting (observer) ---------- */
-  P.report = function () {
-    if (!P.be || !N.isLoggedIn()) return;
-    var item = P.items[P.index], info = item.info || {}, u = N.session.user || {};
-    N.api.call('observer', {
+  function sameEpisode(p) {
+    var item = P.items[P.index], info = item && item.info;
+    return !!(info && String(info.file_id) === String(p.file_id));
+  }
+  function sendReport(p, final, tryNo) {
+    N.api.call('observer', p).then(function (j) {
+      if (!j || !j.success) throw new Error((j && j.msg) || 'observer failed');
+    }).catch(function (e) {
+      // A heartbeat will soon replace a failed non-final report. Retrying an episode
+      // after playback moved on could make that old episode look like the last seen.
+      if (final && tryNo < 2 && (!P.open || sameEpisode(p))) {
+        setTimeout(function () { sendReport(p, true, tryNo + 1); }, 2000);
+      } else {
+        try { console.warn('observer failed', e && e.message || e); } catch (x) {}
+      }
+    });
+  }
+  P.report = function (final) {
+    if (!P.be || !N.isLoggedIn() || P.loading) return;
+    var item = P.items[P.index]; if (!item) return;
+    var info = item.info || {}, u = N.session.user || {};
+    var time = Math.floor(P.be.time()), duration = Math.floor(P.be.duration());
+    if (!isFinite(time) || !isFinite(duration) || time < 1 || duration <= 0) return;
+    var p = {
       post_id: info.post_id || (P.post && P.post.id), file_id: info.file_id,
-      user_id: u.user_id || u.id || '', time: Math.floor(P.be.time()), duration: Math.floor(P.be.duration()),
+      user_id: u.user_id || u.id || '', time: time, duration: duration,
       token: (item.options && item.options.token) || ''
-    }).catch(function () {});
+    };
+    // Details can use this immediately after Back, before a fresh stream response.
+    P.last = { post_id: p.post_id, file_id: p.file_id, time: time, duration: duration };
+    sendReport(p, !!final, 0);
   };
-  P.reportNow = function () { if (P.be && P.be.time() > 1) P.report(); };
+  P.reportNow = function () { if (P.be && P.be.time() > 1) P.report(true); };
 
   /* ---------- scrubber / OSD ---------- */
   function setT(id, txt) { var e = $(id); if (e._t !== txt) { e._t = txt; e.textContent = txt; } }
