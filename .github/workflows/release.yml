@@ -35,7 +35,7 @@ jobs:
         run: |
           mkdir -p stage/web
           cp -r tizen-app/. stage/web/
-          rm -rf stage/web/tools stage/web/js/tmdb-token.js
+          rm -rf stage/web/tools stage/web/js/tmdb-token.js stage/web/js/dev-session.js
           VER="${GITHUB_REF_NAME#v}"
           if [[ "$GITHUB_REF_TYPE" == "tag" && "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             sed -i -E "s/(<widget [^>]*version=\")[^\"]*(\")/\1${VER}\2/" stage/web/config.xml
