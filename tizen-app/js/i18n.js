@@ -23,6 +23,11 @@
       welcome: 'Welcome', subFailed: 'Subtitle failed', playErr: 'Playback error',
       trendingWeek: 'Trending this week', newSeries: 'New & returning series', popularMovies: 'Popular movies now', trendingNow: 'Trending',
       crew: 'Crew', reviews: 'Reviews', moreLikeThis: 'More like this', nextEp: 'Next episode', newSeason: 'New season', close: 'Close', tmdb: 'TMDB metadata', tmdbOn: 'Connected', tmdbMock: 'Mock data', tmdbOff: 'Not configured', clearCache: 'Clear metadata cache', cleared: 'Cache cleared', tmdbCredit: 'Movie data from TMDB. Not endorsed or certified by TMDB.',
+      status: 'Status', tmdbEnding: 'Connected, key ends in', tmdbBuiltIn: 'Connected, built-in token', tmdbChecking: 'Checking with TMDB…', tmdbBad: 'TMDB rejected this key',
+      tmdbNet: 'Can’t reach TMDB right now', tmdbEmpty: 'Type your key first', tmdbKbd: 'Keyboard', tmdbConnect: 'Check and save', tmdbRemove: 'Remove key',
+      tmdbRemoveTitle: 'Remove the TMDB key?', tmdbRemoveBody: 'Posters, logos and cast from TMDB will turn off on this TV.', tmdbSaved: 'TMDB connected', tmdbRemoved: 'TMDB key removed',
+      tmdbScan: 'Scan to open your TMDB API settings', tmdbChars: 'characters',
+      tmdbHelp: 'Enter the 32-character API Key from themoviedb.org/settings/api. The longer Read Access Token works too: use Keyboard, or paste it.',
       Creator: 'Creator', Director: 'Director', Writer: 'Writer', Composer: 'Composer', 'Executive Producer': 'Executive producer', readMore: 'OK to read', scrollHint: '▲ ▼ scroll'
     },
     fa: {
@@ -48,6 +53,11 @@
       welcome: 'خوش آمدید', subFailed: 'خطا در زیرنویس', playErr: 'خطای پخش',
       trendingWeek: 'پرطرفدار این هفته', newSeries: 'سریال‌های جدید و ادامه‌دار', popularMovies: 'فیلم‌های محبوب امروز', trendingNow: 'پرطرفدار',
       crew: 'عوامل', reviews: 'نقد و نظر', moreLikeThis: 'مشابه این', nextEp: 'قسمت بعد', newSeason: 'فصل جدید', close: 'بستن', tmdb: 'اطلاعات TMDB', tmdbOn: 'متصل', tmdbMock: 'داده آزمایشی', tmdbOff: 'تنظیم نشده', clearCache: 'پاک کردن حافظه نهان', cleared: 'پاک شد', tmdbCredit: 'اطلاعات فیلم‌ها از TMDB. مورد تأیید TMDB نیست.',
+      status: 'وضعیت', tmdbEnding: 'متصل، پایان کلید', tmdbBuiltIn: 'متصل، توکن داخلی', tmdbChecking: 'در حال بررسی با TMDB…', tmdbBad: 'TMDB این کلید را نپذیرفت',
+      tmdbNet: 'فعلاً دسترسی به TMDB ممکن نیست', tmdbEmpty: 'اول کلید را وارد کنید', tmdbKbd: 'صفحه‌کلید', tmdbConnect: 'بررسی و ذخیره', tmdbRemove: 'حذف کلید',
+      tmdbRemoveTitle: 'کلید TMDB حذف شود؟', tmdbRemoveBody: 'پوستر، لوگو و بازیگران از TMDB روی این تلویزیون خاموش می‌شود.', tmdbSaved: 'TMDB متصل شد', tmdbRemoved: 'کلید TMDB حذف شد',
+      tmdbScan: 'برای باز کردن تنظیمات API در TMDB اسکن کنید', tmdbChars: 'نویسه',
+      tmdbHelp: 'کلید ۳۲ نویسه‌ای API Key را از themoviedb.org/settings/api وارد کنید. توکن بلندتر Read Access Token هم پذیرفته می‌شود: با صفحه‌کلید یا چسباندن.',
       Creator: 'سازنده', Director: 'کارگردان', Writer: 'نویسنده', Composer: 'آهنگساز', 'Executive Producer': 'تهیه‌کننده اجرایی', readMore: 'OK برای خواندن', scrollHint: '▲ ▼ پیمایش'
     }
   };

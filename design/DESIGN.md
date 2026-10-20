@@ -371,13 +371,14 @@ y 1036 │  next row header peeks (scroll affordance)
 - `.stage-dim` .72 for both pages.
 
 ### 9.8 Settings
-- **Two panes.** The start list (width 520) holds sections: **Account**, **Language**, **Playback**, **Display**, **About**. The end pane (x=760, width 1000) shows the focused section's options. The pane content swaps as the list focus moves (fade 120/220ms).
+- **Two panes.** The start list (width 520) holds sections: **Account**, **Language**, **Playback**, **Display**, **TMDB metadata**, **About**. The end pane (x=760, width 1000) shows the focused section's options. The pane content swaps as the list focus moves (fade 120/220ms).
 - List rows: height 80, `--t-body-l`. The current section is text-1 with an accent bar; focus uses the white fill.
 - **Option rows:** 1000x88, `--surface`, radius `--r-tile`. The label is at the start and the current value is at the end in text-2 with a "‹ ›" hint. Left/Right cycles values in place; OK does the same.
   - **Account:** name, subscription expiry, Sign out (danger text; it confirms with a sheet).
   - **Language:** English / فارسی. Switching re-renders with `dir`. The rail and stage stay mounted.
   - **Playback:** Default subtitles (Off / فارسی / English), Subtitle size (S/M/L = 38/46/54px), with a live sample line rendered on a dark strip. Also Autoplay next episode (On/Off).
   - **Display:** Reduce motion (adds `body.calm`, disables Ken Burns and auto-advance).
+  - **TMDB metadata:** a status row, then a key strip: 4 `--surface` tiles of 8 slots each that fill as the 32-character v3 API Key is typed (the next slot carries the blinking accent caret; a rejected key outlines the tiles in `--danger`; a saved key shows masked except its last 4). Below it is a 16-key hex pad (0–9, a–f, always LTR) with ⌫ / Clear / Keyboard (native IME for a long v4 token), and at the end a 196px white QR tile linking to themoviedb.org/settings/api. Actions: **Check and save** (verifies against TMDB `/authentication` before persisting to `localStorage.tmdbToken`), **Remove key** (confirms), **Clear metadata cache**. Remote number keys, USB keyboards and desktop paste also feed the strip.
   - **About:** version, a "Unofficial client" note, and the active API host.
 
 ### 9.9 Player overlay (OSD)

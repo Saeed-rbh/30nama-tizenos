@@ -367,6 +367,35 @@ html[dir=rtl] .ep .ep-p i{transform-origin:right}
 .orow.danger{color:var(--danger)}
 .subsample{height:120px;border-radius:var(--r-tile);background:#000;display:flex;align-items:center;justify-content:center;margin-bottom:12px;font-weight:500;text-shadow:0 0 4px #000,0 2px 6px #000;line-height:1.5}
 .set .note{font-size:var(--t-cap);color:var(--text-2);margin-top:12px}
+.orow .v.ok{color:var(--good)}
+.orow .v.bad{color:var(--danger)}
+.orow .v .tail{margin:0 .3em}
+/* TMDB key: 4 groups x 8 slots fill as the key is typed; the next slot carries the caret */
+.tkey{display:flex;justify-content:space-between;height:96px;margin:12px 0 28px;direction:ltr}
+.tk-g{display:flex;align-items:center;height:96px;padding:0 14px;border-radius:var(--r-tile);background:var(--surface)}
+.tk-c{position:relative;width:24px;height:56px;margin:0 1px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:600;line-height:1;color:var(--text-1)}
+.tk-c::after{content:"";position:absolute;left:3px;right:3px;bottom:0;height:3px;border-radius:2px;background:rgba(255,255,255,.16)}
+.tk-c.on::after{opacity:0}
+.tk-c.dot{color:var(--text-3)}
+.tk-c.dot::after{opacity:0}
+.tk-c.next::after{background:var(--accent);animation:blink 1s steps(2,start) infinite}
+.tkey.bad .tk-g,.tkey.bad .tk-long{box-shadow:inset 0 0 0 2px var(--danger)}
+.tk-long{flex:1;display:flex;align-items:center;justify-content:space-between;padding:0 28px;border-radius:var(--r-tile);background:var(--surface);font-size:var(--t-body-l);font-weight:600}
+.tk-long .n{font-size:var(--t-cap);font-weight:500;color:var(--text-2)}
+html[lang=fa] .tk-long .n{font-family:"VzFD","Vz",sans-serif;direction:rtl}
+.tkey.saved .tk-long .tx{color:var(--text-2)}
+.tk-body{display:flex;justify-content:space-between;align-items:flex-start}
+.tk-pad{width:608px;direction:ltr}
+.tk-pad .row{display:flex}
+.tk-pad .key:last-child{margin-right:0}
+.tk-pad .fnk{flex:1;width:auto;padding:0 18px;font-size:var(--t-body)}
+.tk-pad .fnk .ico{font-size:32px;margin-right:12px}
+.tk-qr{width:300px;display:flex;flex-direction:column;align-items:center}
+.tk-qr .tile{width:196px;height:196px;padding:14px;border-radius:var(--r-tile);background:#fff}
+.tk-qr .tile svg{display:block;width:168px;height:168px}
+.tk-qr .cap{margin-top:14px;font-size:var(--t-cap);line-height:1.4;color:var(--text-2);text-align:center}
+.tk-acts{display:flex;margin-top:20px}
+.tk-acts .btn .ico{font-size:30px}
 
 /* ---------- sheets / confirm ---------- */
 .modal{position:fixed;left:0;top:0;width:1920px;height:1080px;z-index:120;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);opacity:0;transition:opacity 240ms var(--e-out)}

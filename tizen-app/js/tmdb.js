@@ -10,6 +10,10 @@
 
   function lsRaw(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   T.token = function () { return String(lsRaw('tmdbToken') || N.config.tmdbToken || '').replace(/^\s+|\s+$/g, ''); };
+  // v3 "API Key" (32 hex, sent as ?api_key=) or v4 "Read Access Token" (JWT, sent as Bearer)
+  T.isKey = function (t) { return /^[0-9a-f]{32}$/i.test(t || ''); };
+  T.source = function () { return T.mock() ? 'mock' : lsRaw('tmdbToken') ? 'stored' : N.config.tmdbToken ? 'bundled' : ''; };
+  T.setToken = function (t) { try { if (t) localStorage.setItem('tmdbToken', t); else localStorage.removeItem('tmdbToken'); } catch (e) {} };
   T.mock = function () { return lsRaw('tmdbMock') === '1'; };
   T.enabled = function () { return T.mock() || !!T.token(); };
   T.img = function (path, size) { return path ? IMG + (size || 'w500') + path : ''; };
@@ -80,10 +84,22 @@
     if (T.mock()) {
       return timeout(fetch('tools/fixtures/' + mockFile(path) + '.json').then(function (r) { if (!r.ok) throw new Error('fixture ' + r.status); return r.json(); }), 8000);
     }
-    var q = qs(params);
-    return timeout(fetch(API + path + (q ? '?' + q : ''), { headers: { Authorization: 'Bearer ' + T.token(), Accept: 'application/json' } })
+    return timeout(authFetch(path, params, T.token())
       .then(function (r) { if (!r.ok) throw new Error('tmdb ' + r.status); return r.json(); }), 15000);
   }
+  function authFetch(path, params, tok) {
+    var q = qs(params), h = { Accept: 'application/json' };
+    if (T.isKey(tok)) q += (q ? '&' : '') + 'api_key=' + tok; else h.Authorization = 'Bearer ' + tok;
+    return fetch(API + path + (q ? '?' + q : ''), { headers: h });
+  }
+  // resolves true/false (TMDB accepted / rejected the credential); rejects on network failure
+  T.verify = function (tok) {
+    return timeout(authFetch('/authentication', null, tok).then(function (r) {
+      if (r.status === 401 || r.status === 403) return false;
+      if (!r.ok) throw new Error('tmdb ' + r.status);
+      return true;
+    }), 12000);
+  };
   var inflight = {};
   // o: {ttl, slim(json)} ; the slimmed value is what is cached and returned
   T.get = function (path, params, o) {
