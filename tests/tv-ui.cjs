@@ -36,6 +36,7 @@ const artwork = (poster,i=0) => `<svg xmlns="http://www.w3.org/2000/svg" width="
        if(action==='home_stream')return Promise.resolve({hero_header:{posts:posts.slice(0,3)},suggested:{posts:posts},movies:{posts:posts},new_releases:{posts:posts}});
        if(action==='search')return Promise.resolve({posts:p.query==='none'?[]:posts.slice(0,17)});
        if(action==='archive')return new Promise(function(resolve){setTimeout(function(){resolve({posts:posts.slice((p.page-1)*14,p.page*14),pages:3,total:35});},100);});
+       if(action==='user_list' && p.action==='list')return Promise.resolve({posts:posts.slice(0,17),pages:1,total:17});
        if(action==='single')return Promise.resolve(Object.assign({},posts[0],{options:{free_stream:true,is_series:true}}));
        if(action==='menu')return Promise.resolve({categories:[{name:'Movies',slug:'movies'}],genres:[{id:1,name:'Drama',slug:'drama',count:35}]});
        return Promise.resolve({});
@@ -48,6 +49,8 @@ const artwork = (poster,i=0) => `<svg xmlns="http://www.w3.org/2000/svg" width="
  await page.addInitScript(({lang})=>{localStorage.setItem('n30.guest','true');localStorage.setItem('n30.lang',JSON.stringify(lang));localStorage.setItem('n30.calm','true');},{lang});
  await page.goto('http://tv.test/'); await page.waitForSelector('.home .card'); await page.waitForTimeout(1600);
  const check=async (name,fn)=>{const r=await page.evaluate(fn);assert(r.ok,lang+': '+name,r);};
+ await check('unofficial sidebar mark renders with visible dimensions',()=>{const e=document.querySelector('.rail-brand .mark'),r=e.getBoundingClientRect();return {ok:e.tagName.toLowerCase()==='svg'&&r.width>0&&r.height>0};});
+ await check('Tab is prevented without changing focus or scrolling the TV canvas',()=>{const before=N.nav.cur,e=new KeyboardEvent('keydown',{keyCode:9,bubbles:true,cancelable:true});document.dispatchEvent(e);return {ok:e.defaultPrevented&&N.nav.cur===before&&window.scrollX===0&&window.scrollY===0};});
  await page.screenshot({path:path.join(out,lang+'-home.png')});
  if(!baseline) {
    await page.keyboard.press('ArrowDown');
@@ -72,6 +75,7 @@ const artwork = (poster,i=0) => `<svg xmlns="http://www.w3.org/2000/svg" width="
    return {ok:separate && title.width<=card.width && title.width>0 && dim.width===1920 && dim.height===1080 && sameRow && (N.isRtl()?rail.x>1800:rail.right<120),grid,panel,title,dim,sameRow,rail};
  });
  if(baseline) {await page.close();continue;}
+ await check('search renders five columns matching vertical navigation',()=>{const a=[...document.querySelectorAll('.rgrid .gcell')];return {ok:a[4].offsetTop===a[0].offsetTop&&a[5].offsetTop>a[0].offsetTop};});
  // Traverse keyboard edge into results using actual key events.
  await page.evaluate(()=>N.nav.focus(document.querySelector('.kb .grid').children[N.lang==='fa'?7:6],true));
  await page.keyboard.press(lang==='fa'?'ArrowLeft':'ArrowRight');
@@ -125,6 +129,16 @@ const artwork = (poster,i=0) => `<svg xmlns="http://www.w3.org/2000/svg" width="
  });
  await page.keyboard.press('Enter');await page.keyboard.press('Enter');await page.keyboard.press('Escape');await page.keyboard.press('Escape');
  await check('AVPlay start, pause, resume, close and UI restoration',()=>({ok:!N.player.open&&!document.body.classList.contains('playing')&&avCalls.includes('open')&&avCalls.includes('pause')&&avCalls.includes('close')&&document.body.contains(N.nav.cur),calls:avCalls}));
+ // Exercise the library controls merged from upstream using only mocked account APIs.
+ await page.evaluate(()=>{N.isLoggedIn=function(){return true;};N.lib.clear();N.go('details',{id:1},{reset:true});});
+ await page.waitForSelector('.lib-watchlist');await page.waitForTimeout(350);
+ await page.evaluate(()=>N.nav.focus(document.querySelector('.lib-watchlist')));await page.waitForTimeout(250);
+ await check('library action labels stay centered in English and Persian',()=>{const e=document.querySelector('.lib-watchlist'),b=e.getBoundingClientRect(),l=document.querySelector('.lib-watchlist .io-label').getBoundingClientRect();return {ok:Math.abs((b.left+b.width/2)-(l.left+l.width/2))<2&&getComputedStyle(e).width==='72px'&&l.width>0,button:b.toJSON(),label:l.toJSON()};});
+ await page.keyboard.press('Enter');await page.waitForTimeout(100);
+ await check('library action toggles through the existing API and keeps focus',()=>({ok:N.lib.has('watchlist',1)&&N.nav.cur.classList.contains('lib-watchlist')&&N.nav.cur.classList.contains('on')&&!N.nav.cur.classList.contains('busy')}));
+ await page.evaluate(()=>N.go('mylist',{}, {reset:true}));await page.waitForSelector('.ggrid .card');await page.waitForTimeout(350);
+ await page.keyboard.press('ArrowDown');
+ await check('My List retains seven-column navigation after the merge',()=>{const a=[...document.querySelectorAll('.ggrid .card')];return {ok:a.length===17&&N.nav.cur===a[7]&&a[6]._cell.offsetTop===a[0]._cell.offsetTop&&a[7]._cell.offsetTop>a[0]._cell.offsetTop,count:a.length,index:a.indexOf(N.nav.cur)};});
  await page.close();
  }
  assert(errors.length===0,'No uncaught browser errors',errors);

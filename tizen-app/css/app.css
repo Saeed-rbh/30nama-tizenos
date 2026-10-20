@@ -121,7 +121,6 @@ html[dir=rtl] .ri.cur::before{left:auto;right:0}
 .fl.focus::before{opacity:1}
 .fl.focus{color:var(--focus-ink)}
 .btn{display:inline-flex;align-items:center;justify-content:center;height:72px;padding-left:40px;padding-right:40px;border-radius:var(--r-btn);background:rgba(255,255,255,.12);color:var(--text-1);font-size:var(--t-body);font-weight:600;white-space:nowrap;transition:transform var(--d-focus) var(--e-out)}
-html[dir=rtl] .btn{padding-right:40px;padding-left:40px}
 .btn .ico{font-size:32px;margin-right:12px}
 html[dir=rtl] .btn .ico{margin-right:0;margin-left:12px}
 .btn.primary{background:var(--accent);color:var(--accent-ink)}
@@ -133,6 +132,7 @@ html[dir=rtl] .btn+.btn{margin-left:0;margin-right:16px}
 .btn.io+.btn.io{margin-left:12px}
 html[dir=rtl] .btn.io+.btn.io{margin-left:0;margin-right:12px}
 .btn.io .ico{margin:0;font-size:34px}
+html[dir=rtl] .btn.io .ico{margin:0}
 .btn.io.on .ico{fill:currentColor}
 .btn.io .io-label{position:absolute;top:84px;left:50%;transform:translateX(calc(var(--dir) * -50%));opacity:0;color:var(--text-1);font-size:var(--t-cap);font-weight:500;white-space:nowrap;pointer-events:none;transition:opacity var(--d-focus) var(--e-out)}
 html[dir=rtl] .btn.io .io-label{left:auto;right:50%}
