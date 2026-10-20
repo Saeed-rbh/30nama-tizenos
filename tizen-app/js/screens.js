@@ -189,7 +189,7 @@
       var d = r.d, c = ui.card(p, d.kind, { rank: i + 1 });
       if (d.kind === 'land') {
         var n = cwNorm(d.raw[i] || p), lb = n.label || N.title(p);
-        c.appendChild(el('div', 'lbl', lb));
+        c._mq = ui.mq(lb, 'lbl'); c.appendChild(c._mq);
         if (n.prog > 0) { var pb = el('div', 'prog'), pi = el('i'); pi.style.transform = 'scaleX(' + n.prog.toFixed(3) + ')'; pb.appendChild(pi); c.appendChild(pb); }
       }
       c.onfocus2 = function () { onCardFocus(defs.indexOf(d), i); };
@@ -434,7 +434,7 @@
       if (tmOn) { titleEl.textContent = ''; titleEl.appendChild(el('span', 'tt', N.title(post))); }
       var o = other(post); if (o) col.appendChild(el('div', 'd-alt', o));
       var tagEl = null; if (tmOn) { tagEl = el('div', 'd-tag'); tagEl.dir = 'auto'; col.appendChild(tagEl); }
-      var meta = ui.meta(post, 3); meta.classList.add('d-meta'); col.appendChild(meta);
+      var meta = ui.meta(post, 3, true); meta.classList.add('d-meta'); col.appendChild(meta);
       var plot = el('div', 'd-plot d-fade', N.plot(post)); col.appendChild(plot);
       var btns = el('div', 'd-btns d-fade'); col.appendChild(btns);
       var castEl = null;
@@ -448,14 +448,34 @@
         backToSheet = epsOpen; lastFocus = epsOpen ? null : N.nav.cur; if (epsOpen) { epMem[curS] = i; clearTimeout(swT); swT = null; hideEps(); }
         N.player.start(post, items, i, withResume ? resume : null);
       }
-      var info0 = items[startIdx] && items[startIdx].info || {};
-      var playLabel = resume ? N.t('resume') + (isSeries ? ' S' + (info0.season || 1) + '·E' + ui.epLabel(info0.episode, startIdx + 1) : '') : N.t('play');
+      function playLabel() {
+        var info0 = items[startIdx] && items[startIdx].info || {};
+        return resume ? N.t('resume') + (isSeries ? ' S' + (info0.season || 1) + '·E' + ui.epLabel(info0.episode, startIdx + 1) : '') : N.t('play');
+      }
       var playB;
-      if (items.length) playB = ui.btn(playLabel, function () { play(startIdx, true); }, 'primary', 'play');
+      if (items.length) playB = ui.btn(playLabel(), function () { play(startIdx, true); }, 'primary', 'play');
       else playB = ui.btn(N.t('play'), function () { N.toast(N.isLoggedIn() ? N.t('noStream') : N.t('playLogin'), 3500); }, 'primary', 'play');
       btns.appendChild(playB);
       var epB = null;
       if (isSeries && items.length) { epB = ui.btn(N.t('episodes'), function () { openEps(); }, '', 'list'); btns.appendChild(epB); }
+      if (N.isLoggedIn()) {
+        ['watchlist', 'favorite'].forEach(function (group) {
+          var icon = group === 'watchlist' ? 'eye' : 'heart';
+          var b = ui.btn('', function () {
+            if (b._busy) return;
+            b._busy = true; b.classList.add('busy');
+            N.lib.toggle(group, post.id).then(function (added) {
+              paint(); N.toast(N.t(added ? (group === 'watchlist' ? 'addedWatch' : 'addedFav') : (group === 'watchlist' ? 'removedWatch' : 'removedFav')));
+            }).catch(function () {
+              paint(); N.toast(N.t('listFailed'));
+            }).then(function () { b._busy = false; b.classList.remove('busy'); });
+          }, 'io lib-' + group, icon);
+          b._label = el('span', 'io-label', N.t(group)); b.appendChild(b._label);
+          function paint() { b.classList.toggle('on', N.lib.has(group, post.id)); }
+          b.onfocus2 = function () { heroFocus(); };
+          btns.appendChild(b); N.lib.ready().then(function () { if (!dead) paint(); });
+        });
+      }
 
       /* episodes sheet */
       var sheet = null, tabs = null, wrap = null, track = null, tmeta = null, seasons = [], map = {}, epMem = {}, tileBy = {}, backToSheet = false;
@@ -492,6 +512,7 @@
           t._idx = idx; tileBy[idx] = t; track.appendChild(t); tiles.push(t);
         });
         ui.layoutTrack(track, tiles, tiles.map(function () { return 360; }));
+        ui.epTmdb(post, s, tiles);
         // position the track for the remembered tile (no animation, nothing carried over from another season)
         var tg = epTarget(s);
         track.style.transition = 'none'; track._s = null; track.style.transform = ''; ui.slideTo(track, tg ? tg._x : 184); void track.offsetWidth; track.style.transition = '';
@@ -570,12 +591,13 @@
         var c = el('div', 'card f k-face'), ph = el('div', 'fph');
         ph.appendChild(el('span', '', initials(p.n)));
         if (p.p) { var im = el('img', 'im'); im.alt = ''; im.decoding = 'async'; im.onload = function () { im.classList.add('in'); }; im.src = N.tmdb.img(p.p, 'w185'); ph.appendChild(im); }
-        c.appendChild(ph); c.appendChild(el('div', 'fnm', p.n)); c.appendChild(el('div', 'frl', role || ''));
+        c._mq = [ui.mq(p.n, 'fnm'), ui.mq(role || '', 'frl')];
+        c.appendChild(ph); c.appendChild(c._mq[0]); c.appendChild(c._mq[1]);
         return c;
       }
       function revCard(rv) {
         var c = el('div', 'card f k-rev'), h = el('div', 'rvh');
-        h.appendChild(el('span', 'rva', rv.a || '-'));
+        c._mq = ui.mq(rv.a || '-', 'rva'); h.appendChild(c._mq);
         if (rv.r) h.appendChild(el('span', 'rvr tab', '★ ' + rv.r));
         c.appendChild(h); c.appendChild(el('div', 'rvt', rv.t.replace(/\s+/g, ' ')));
         c.onclick = function () { openReview(rv); };
@@ -666,11 +688,23 @@
       }
       if (tmOn) N.tmdb.details(post).then(function (d) { if (!dead && d) paintTmdb(d); }).catch(function () {});
       current.onPlayerClosed = function () {
+        var last = N.player.last, found = -1;
+        if (last && String(last.post_id) === String(post.id)) {
+          items.forEach(function (it, i) {
+            if (it.info && String(it.info.file_id) === String(last.file_id)) found = i;
+          });
+          if (found >= 0) {
+            resume = { file_id: last.file_id, time: last.time, duration: last.duration };
+            startIdx = found;
+            playB.lastChild.textContent = playLabel();
+          }
+        }
         if (backToSheet && sheet) { backToSheet = false; openEps(N.player.index, true); return; } // same season, on the episode just played (or the one autoplay moved to)
         var t = lastFocus && document.body.contains(lastFocus) && lastFocus.offsetWidth > 0 ? lastFocus : playB; N.nav.focus(t, true);
       };
       N.nav.focus(playB, true);
       if (params.autoplay) {
+        params.autoplay = 0; // params is the history entry: returning here with Back must not start playback again
         if (items.length) play(startIdx, true); else N.toast(N.isLoggedIn() ? N.t('noStream') : N.t('playLogin'), 3500);
       }
     }
@@ -803,19 +837,19 @@
   };
 
   var SORTS = [['date', 'newest'], ['favorite', 'popular'], ['update', 'updated']];
-  function archiveList(root, params, restore) {
-    var dead = false, page = 1, pages = 1, loading = false, total = 0, cells = [], skels = [], sort = (restore && restore.sort) || 'date', wantIdx = restore && restore.idx || 0, restoring = !!(restore && restore.idx > 0), gen = 0, COLS = 7;
+  function pagedGrid(root, o, restore) {
+    var dead = false, page = 1, pages = 1, loading = false, total = 0, cells = [], skels = [], tab = (restore && restore.tab) || o.tabs[0][0], wantIdx = restore && restore.idx || 0, restoring = !!(restore && restore.idx > 0), gen = 0, COLS = 7;
     root.classList.add('archive', 'gridpage'); N.stage.dim(0.72);
     var box = el('div', 'arch'); root.appendChild(box);
-    var head = el('div', 'head ah'); head.textContent = params.name || params.slug; var cnt = el('small', 'tab', ''); head.appendChild(cnt); box.appendChild(head);
+    var head = el('div', 'head ah'); head.textContent = o.title(); var cnt = el('small', 'tab', ''); head.appendChild(cnt); box.appendChild(head);
     var sorts = el('div', 'sorts head'); box.appendChild(sorts);
     var grid = el('div', 'ggrid'); box.appendChild(grid);
     box.reveal = function (e) { var ty = ui.vscroll(box, e._cell || e, 260); box.classList.toggle('scrolled', ty < 0); };
-    SORTS.forEach(function (s) {
-      var p = ui.pill(N.t(s[1]), function () { if (sort === s[0]) return; sort = s[0]; paint(); reset(); }, sort === s[0]); p._k = s[0]; sorts.appendChild(p);
+    o.tabs.forEach(function (s) {
+      var p = ui.pill(N.t(s[1]), function () { if (tab === s[0]) return; tab = s[0]; paint(); reset(); }, tab === s[0]); p._k = s[0]; sorts.appendChild(p);
       p.onnav = function (dir) { if (dir === 'down') return cells[0] ? cells[0].card : true; if (dir === 'up') return true; return false; };
     });
-    function paint() { for (var i = 0; i < sorts.children.length; i++) sorts.children[i].classList.toggle('cur', sorts.children[i]._k === sort); }
+    function paint() { for (var i = 0; i < sorts.children.length; i++) sorts.children[i].classList.toggle('cur', sorts.children[i]._k === tab); }
     function addSkels(n) { for (var i = 0; i < n; i++) { var c = el('div', 'gcell'); c.appendChild(ui.skelCard('grid')); skels.push(c); grid.appendChild(c); } }
     function clearSkels() { skels.forEach(function (s) { if (s.parentNode) s.parentNode.removeChild(s); }); skels = []; }
     function reset() {
@@ -824,7 +858,7 @@
     }
     function load() {
       if (loading) return; loading = true; var my = gen; addSkels(page === 1 ? 14 : 7);
-      N.api.get('archive', { slugs: params.slug, streamonly: 1, page: page, orderby: sort, order: 'desc' }).then(function (r) {
+      o.fetch(tab, page).then(function (r) {
         if (dead || my !== gen) return;
         loading = false; clearSkels();
         var first = cells.length === 0;
@@ -839,24 +873,53 @@
           };
           cells.push(cell); grid.appendChild(cell);
         });
+        if (first && !cells.length && o.empty) {
+          var empty = el('div', 'list-empty'); empty.appendChild(el('div', 'm', N.t(o.empty[tab])));
+          empty.appendChild(el('div', 'hint', N.t('emptyHint'))); grid.appendChild(empty);
+        }
         for (var k = 0; k < Math.min(cells.length, 3 * COLS); k++) ui.load(cells[k].card);
         if (first && !restoring) N.nav.focus(cells[0] ? cells[0].card : sorts.firstChild, true);
         if (restoring) {
           if (wantIdx < cells.length) { restoring = false; instant(root, function () { N.nav.focus(cells[wantIdx].card, true); }); }
           else if (page < pages) { page++; load(); } else { restoring = false; N.nav.focus(cells[0] ? cells[0].card : sorts.firstChild, true); }
         }
-      }).catch(function (e) { loading = false; if (!dead && my === gen) { clearSkels(); if (!cells.length) errorView(root, e, function () { N.go('archive', params, { replace: true }); }); } });
+      }).catch(function (e) { loading = false; if (!dead && my === gen) { clearSkels(); if (!cells.length) errorView(root, e, function () { o.retry(); }); } });
     }
     load();
     return {
       destroy: function () { dead = true; },
-      focusState: function () { for (var i = 0; i < cells.length; i++) if (cells[i].card === N.nav.cur) return { idx: i, sort: sort }; return null; }
+      focusState: function () { for (var i = 0; i < cells.length; i++) if (cells[i].card === N.nav.cur) return { idx: i, tab: tab }; return { tab: tab }; }
     };
   }
+  function archiveList(root, params, restore) {
+    return pagedGrid(root, {
+      title: function () { return params.name || params.slug; },
+      tabs: SORTS,
+      fetch: function (sort, page) { return N.api.get('archive', { slugs: params.slug, streamonly: 1, page: page, orderby: sort, order: 'desc' }); },
+      retry: function () { N.go('archive', params, { replace: true }); }
+    }, restore && { idx: restore.idx, tab: restore.sort });
+  }
+
+  S.mylist = function (root, params, restore) {
+    if (!N.isLoggedIn()) {
+      root.classList.add('archive'); N.stage.dim(0.72);
+      var m = el('div', 'center-msg'), text = el('div', 'm', N.t('listLogin'));
+      var signIn = ui.btn(N.t('signIn'), function () { N.go('login', {}, { reset: true }); }, 'primary');
+      m.appendChild(text); m.appendChild(signIn); root.appendChild(m); N.nav.focus(signIn, true);
+      return {};
+    }
+    return pagedGrid(root, {
+      title: function () { return N.t('mylist'); },
+      tabs: [['watchlist', 'watchlist'], ['favorite', 'favorites']],
+      empty: { watchlist: 'emptyWatch', favorite: 'emptyFav' },
+      fetch: function (group, page) { return N.lib.list(group, page); },
+      retry: function () { N.go('mylist', {}, { replace: true }); }
+    }, restore);
+  };
 
   /* ================= Settings ================= */
   S.settings = function (root, params, restore) {
-    var dead = false, sec = (restore && restore.sec) || (params && params.section) || 'account', swT = null, secs = ['account', 'language', 'playback', 'display', 'about'];
+    var dead = false, sec = (restore && restore.sec) || (params && params.section) || 'account', swT = null, paneOff = null, secs = ['account', 'language', 'playback', 'display', 'tmdb', 'about'];
     root.classList.add('set'); N.stage.dim(0.72);
     root.appendChild(el('div', 'h-xl t', N.t('settings')));
     var list = el('div', 'slist'), pane = el('div', 'spane'); root.appendChild(list); root.appendChild(pane);
@@ -918,23 +981,145 @@
         p.appendChild(info(N.t('unofficial'), ''));
         p.appendChild(info(N.t('apiHost'), (N.api.host || '').replace(/^https?:\/\//, '').replace(/\/api.*$/, '')));
         p.appendChild(info(N.t('tmdb'), N.tmdb.mock() ? N.t('tmdbMock') : (N.tmdb.token() ? N.t('tmdbOn') : N.t('tmdbOff'))));
-        if (N.tmdb.enabled()) {
-          p.appendChild(action(N.t('clearCache'), function () { N.tmdb.clearCache(); N.toast(N.t('cleared')); }));
-          p.appendChild(el('div', 'note', N.t('tmdbCredit')));
+        if (N.tmdb.enabled()) p.appendChild(el('div', 'note', N.t('tmdbCredit')));
+      },
+      tmdb: tmdbPane
+    };
+    // TMDB credential entry. A v3 API Key is 32 hex chars, so a 16-key pad covers it; the long v4 token comes in through the IME or a paste.
+    function tmdbPane(p) {
+      var HEX = '0123456789abcdef', LEN = 32, buf = '', state = '', busy = false, gone = false;
+      var st = info(N.t('status'), ''), stV = st.lastChild; p.appendChild(st);
+      var strip = el('div', 'tkey latin'); p.appendChild(strip);
+      var body = el('div', 'tk-body'), pad = el('div', 'tk-pad latin'); body.appendChild(pad); p.appendChild(body);
+      function key(label, cls, fn) {
+        var k = el('button', 'key f fl' + (cls ? ' ' + cls : ''));
+        if (typeof label === 'string') k.textContent = label; else k.appendChild(label);
+        k.onclick = fn; return k;
+      }
+      for (var r0 = 0; r0 < 2; r0++) {
+        var row = el('div', 'row');
+        HEX.slice(r0 * 8, r0 * 8 + 8).split('').forEach(function (c) { row.appendChild(key(c, '', function () { type(c); })); });
+        pad.appendChild(row);
+      }
+      var fnRow = el('div', 'row fn'), kbdK = key(ui.icon('kbd'), 'fnk', openIme);
+      kbdK.appendChild(el('span', '', N.t('tmdbKbd')));
+      fnRow.appendChild(key('⌫', 'fnk', function () { edit(buf.slice(0, -1)); }));
+      fnRow.appendChild(key(N.t('clearK'), 'fnk', function () { edit(''); }));
+      fnRow.appendChild(kbdK); pad.appendChild(fnRow);
+      var qr = el('div', 'tk-qr'), tile = el('div', 'tile');
+      try { var q = qrcode(0, 'M'); q.addData('https://www.themoviedb.org/settings/api'); q.make(); tile.innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }); } catch (e) {}
+      qr.appendChild(tile); qr.appendChild(el('div', 'cap', N.t('tmdbScan'))); body.appendChild(qr);
+      var acts = el('div', 'tk-acts'); p.appendChild(acts);
+      p.appendChild(el('div', 'note', N.t('tmdbHelp')));
+      var hid = el('input'); hid.type = 'text'; hid.setAttribute('autocomplete', 'off'); hid.setAttribute('spellcheck', 'false');
+      hid.style.cssText = 'position:absolute;left:-2000px;top:0;width:10px;height:10px'; p.appendChild(hid);
+
+      function clean(t) { return String(t || '').replace(/\s+/g, '').slice(0, 512); }
+      function isHex(t) { return /^[0-9a-f]*$/i.test(t); }
+      function paintStatus() {
+        var tok = N.tmdb.token(), src = N.tmdb.source(), cls = '', txt;
+        stV.innerHTML = '';
+        if (state === 'checking') txt = N.t('tmdbChecking');
+        else if (state === 'bad') { txt = N.t('tmdbBad'); cls = 'bad'; }
+        else if (state === 'net') { txt = N.t('tmdbNet'); cls = 'bad'; }
+        else if (state === 'empty') txt = N.t('tmdbEmpty');
+        else if (src === 'mock') txt = N.t('tmdbMock');
+        else if (src === 'bundled') { txt = N.t('tmdbBuiltIn'); cls = 'ok'; }
+        else if (tok) { stV.appendChild(el('span', '', N.t('tmdbEnding'))); stV.appendChild(el('span', 'latin tail', tok.slice(-4))); cls = 'ok'; }
+        else txt = N.t('tmdbOff');
+        if (txt) stV.textContent = txt;
+        stV.className = 'v' + (cls ? ' ' + cls : '');
+      }
+      // empty buffer shows the saved credential, masked except its tail
+      function paintStrip() {
+        var saved = !buf && N.tmdb.source() === 'stored', s = saved ? N.tmdb.token() : buf, long = s.length > LEN || !isHex(s);
+        strip.innerHTML = ''; strip.className = 'tkey latin' + (long ? ' long' : '') + (saved ? ' saved' : '') + (state === 'bad' ? ' bad' : '');
+        if (long) {
+          var box = el('div', 'tk-long');
+          box.appendChild(el('span', 'tx', saved ? '••••••••••…' + s.slice(-6) : s.slice(0, 14) + '…' + s.slice(-8)));
+          box.appendChild(el('span', 'n', s.length + ' ' + N.t('tmdbChars')));
+          strip.appendChild(box); return;
+        }
+        for (var g = 0; g < 4; g++) {
+          var grp = el('div', 'tk-g');
+          for (var i = 0; i < 8; i++) {
+            var idx = g * 8 + i, c = s.charAt(idx), cls = 'tk-c';
+            if (c) cls += saved && idx < LEN - 4 ? ' dot' : ' on'; else if (idx === s.length && !saved) cls += ' next';
+            grp.appendChild(el('span', cls, c ? (saved && idx < LEN - 4 ? '•' : c) : ''));
+          }
+          strip.appendChild(grp);
         }
       }
-    };
+      function paintActs() {
+        var keep = N.nav.cur && acts.contains(N.nav.cur) ? N.nav.cur.getAttribute('data-a') : null;
+        acts.innerHTML = '';
+        var bs = [ui.btn(N.t('tmdbConnect'), connect, 'primary', 'check')]; bs[0].setAttribute('data-a', 'connect');
+        if (N.tmdb.source() === 'stored') { var rm = ui.btn(N.t('tmdbRemove'), removeKey, 'danger'); rm.setAttribute('data-a', 'remove'); bs.push(rm); }
+        if (N.tmdb.enabled()) { var cc = ui.btn(N.t('clearCache'), function () { N.tmdb.clearCache(); N.toast(N.t('cleared')); }); cc.setAttribute('data-a', 'cache'); bs.push(cc); }
+        bs.forEach(function (b) { acts.appendChild(b); });
+        if (keep) N.nav.focus(acts.querySelector('[data-a="' + keep + '"]') || bs[0], true);
+      }
+      function paint() { paintStatus(); paintStrip(); }
+      function edit(v) { buf = v; if (state && state !== 'checking') state = ''; paint(); }
+      function type(c) {
+        var b = (buf.length > LEN || !isHex(buf)) ? '' : buf;
+        if (b.length >= LEN) return;
+        edit(b + c);
+        if (buf.length === LEN) N.nav.focus(acts.firstChild, true);
+      }
+      function openIme() { hid.value = buf; N.nav.focus(hid); }
+      hid.oninput = function () { edit(clean(hid.value)); };
+      hid.onenter = function () { hid.blur(); N.nav.focus(kbdK, true); if (buf) connect(); };
+      hid.onback = function () { hid.blur(); N.nav.focus(kbdK, true); return true; };
+      function connect() {
+        if (busy) return;
+        var t = clean(buf);
+        if (N.tmdb.isKey(t)) t = t.toLowerCase();
+        if (!t) { state = 'empty'; paint(); N.nav.focus(pad.querySelector('.key'), true); return; }
+        busy = true; state = 'checking'; paint();
+        N.tmdb.verify(t).then(function (ok) {
+          busy = false; if (gone) return;
+          if (!ok) { state = 'bad'; paint(); return; }
+          N.tmdb.setToken(t); N.dropHome(); buf = ''; state = ''; paint(); paintActs(); N.toast(N.t('tmdbSaved'));
+        }, function () { busy = false; if (gone) return; state = 'net'; paint(); });
+      }
+      function removeKey() {
+        N.confirm({ title: N.t('tmdbRemoveTitle'), body: N.t('tmdbRemoveBody'), ok: N.t('tmdbRemove'), danger: true, onOk: function () {
+          N.tmdb.setToken(''); N.dropHome(); buf = ''; state = ''; paint(); paintActs(); N.toast(N.t('tmdbRemoved'));
+          if (!gone) N.nav.focus(acts.firstChild, true);
+        } });
+      }
+      // hardware input: remote number keys, USB/desktop keyboards, and paste on desktop
+      function onKey(e) {
+        if (document.activeElement === hid || e.ctrlKey || e.altKey || e.metaKey || N.player.open || document.querySelector('.modal')) return false;
+        if (e.keyCode === N.keys.BACKSPACE && buf) { edit(buf.slice(0, -1)); return true; }
+        var c = e.keyCode >= 48 && e.keyCode <= 57 ? String(e.keyCode - 48) : (e.key && e.key.length === 1 ? e.key.toLowerCase() : '');
+        if (c && HEX.indexOf(c) >= 0) { type(c); return true; }
+        return false;
+      }
+      function onPaste(e) {
+        if (document.activeElement === hid) return;
+        var t = clean(e.clipboardData && e.clipboardData.getData('text'));
+        if (t) { edit(t); N.nav.focus(acts.firstChild, true); }
+      }
+      N.nav.pushHandler(onKey); document.addEventListener('paste', onPaste);
+      paint(); paintActs();
+      return function () { gone = true; N.nav.popHandler(onKey); document.removeEventListener('paste', onPaste); };
+    }
+    function paintPane(s) {
+      if (paneOff) { paneOff(); paneOff = null; }
+      pane.innerHTML = ''; paneOff = builders[s](pane) || null; pane.classList.remove('sw');
+    }
     function showPane(s, now) {
       if (s === sec && pane.firstChild) return; sec = s;
       for (var k in rows) rows[k].classList.toggle('cur', k === s);
       clearTimeout(swT);
-      function paintP() { pane.innerHTML = ''; builders[s](pane); pane.classList.remove('sw'); }
-      if (now) paintP(); else { pane.classList.add('sw'); swT = setTimeout(function () { if (!dead) paintP(); }, 120); }
+      if (now) paintPane(s); else { pane.classList.add('sw'); swT = setTimeout(function () { if (!dead) paintPane(s); }, 120); }
     }
     secs.forEach(function (s) {
-      var r = el('button', 'srow f fl' + (s === sec ? ' cur' : ''), N.t(s === 'account' ? 'account' : s)); rows[s] = r;
+      var r = el('button', 'srow f fl' + (s === sec ? ' cur' : ''), N.t(s)); rows[s] = r;
       r.onfocus2 = function () { showPane(s); };
-      r.onnav = function (dir) { if (dir === 'right' || dir === 'left') { if (ui.step(dir) > 0) { if (swT) { clearTimeout(swT); swT = null; pane.innerHTML = ''; builders[sec](pane); pane.classList.remove('sw'); } var f = pane.querySelector('.f'); return f || true; } return false; } return false; };
+      r.onnav = function (dir) { if (dir === 'right' || dir === 'left') { if (ui.step(dir) > 0) { if (swT) { clearTimeout(swT); swT = null; paintPane(sec); } var f = pane.querySelector('.f'); return f || true; } return false; } return false; };
       list.appendChild(r);
     });
     showPane(sec, true);
@@ -942,8 +1127,9 @@
     if (restoreIdx !== undefined && restoreIdx !== null && pane.children[restoreIdx] && pane.children[restoreIdx].classList.contains('f')) N.nav.focus(pane.children[restoreIdx], true);
     else N.nav.focus(rows[sec], true);
     return {
-      destroy: function () { dead = true; clearTimeout(swT); },
+      destroy: function () { dead = true; clearTimeout(swT); if (paneOff) { paneOff(); paneOff = null; } },
       back: function () {
+        if (N.nav.cur && N.nav.cur.onback && N.nav.cur.onback()) return true;
         if (N.nav.cur && pane.contains(N.nav.cur)) { N.nav.focus(rows[sec], true); return true; }
         return false;
       },
