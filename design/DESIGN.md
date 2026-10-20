@@ -234,7 +234,7 @@ Text content changes inside the player OSD (time), list contents, settings value
 **Collapsed (default, content focused):**
 - The rail is 120px wide at the start edge, full height, with a static background `linear-gradient(to right, rgba(7,8,11,.8), rgba(7,8,11,0))` (mirrored in RTL).
 - At the top (y=54) is the brand monogram "30" in Vz 800, 40px, accent.
-- Icons are inline SVG, 40px, with a 2.5px stroke and `currentColor`. They are stacked and centered vertically, with a 72px pitch. The order is: **Search, Home, Movies, Series, Anime, Archive, Settings**. Account details live in Settings, not the rail. Movies, Series and Anime route to archive with the slug.
+- Icons are inline SVG, 40px, with a 2.5px stroke and `currentColor`. They are stacked and centered vertically, with a 72px pitch. The order is: **Search, Home, My list, Movies, Series, Anime, Archive, Settings**. My list has Watchlist and Favorites tabs. Account details live in Settings, not the rail. Movies, Series and Anime route to archive with the slug.
 - Icon colors are text-3. The current page's icon is text-1, with a 4x28px accent bar at the start edge (x=0).
 
 **Expanded (focus enters the rail):**
@@ -326,7 +326,7 @@ y 1036 │  next row header peeks (scroll affordance)
   - Other-language title `--t-body-l` text-2.
   - Meta line, the same as the billboard, but with all scores and up to 3 genres.
   - Plot `--t-body-l` text-2, 4-line clamp (`-webkit-line-clamp`, supported).
-  - Buttons (y≈ 700): **Play** or **Resume S2·E5** (primary), **Episodes** (series only), **Trailer** (only if a field exists, otherwise omit).
+  - Buttons (y≈ 700): **Play** or **Resume S2·E5** (primary), **Episodes** (series only), **Trailer** (only if a field exists, otherwise omit), followed by icon-only Watchlist (eye) and Favorite (heart) toggles for signed-in users. Filled icons indicate membership; their labels appear while focused.
   - Cast: one line of text-3 `--t-cap`, "Cast: A, B, C…" (not focusable).
 - **Back** goes to the previous screen and restores focus. The stage stays (no crossfade), so the return is instant and seamless.
 

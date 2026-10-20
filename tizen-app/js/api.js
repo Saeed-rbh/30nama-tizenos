@@ -52,7 +52,7 @@
   }
   function schedule(bg, run) { return new Promise(function (res, rej) { (bg ? Q.bg : Q.core).push({ run: run, res: res, rej: rej }); pump(); }); }
   api.sched = function (name, params, opts) {
-    var bg = !!(opts && opts.bg), tries = NO_RETRY[name] ? 0 : BACKOFF.length;
+    var bg = !!(opts && opts.bg), tries = (opts && opts.noRetry) || NO_RETRY[name] ? 0 : BACKOFF.length;
     function attempt(n) {
       return schedule(bg, function () { return api.rawCall(name, params); }).catch(function (e) {
         if (n < tries && e && e.retry) {
@@ -128,13 +128,54 @@
   };
 
   N.isLoggedIn = function () { return !!(N.session && N.session.token); };
+  var lib = N.lib = { data: null, promise: null };
+  function emptyLibrary() { return { watchlist: {}, favorite: {} }; }
+  function normalizeLibrary(raw) {
+    var out = emptyLibrary();
+    ['watchlist', 'favorite'].forEach(function (group) {
+      var ids = raw && raw[group] && raw[group].post;
+      if (!(ids instanceof Array)) return;
+      ids.forEach(function (id) { out[group][String(id)] = true; });
+    });
+    return out;
+  }
+  lib.clear = function () { lib.data = null; lib.promise = null; };
+  lib.ready = function () {
+    if (!N.isLoggedIn()) return Promise.resolve(emptyLibrary());
+    if (lib.data) return Promise.resolve(lib.data);
+    if (!lib.promise) {
+      lib.promise = api.get('user_mylist').then(function (raw) {
+        lib.data = normalizeLibrary(raw); return lib.data;
+      }).catch(function () {
+        lib.data = emptyLibrary(); return lib.data;
+      });
+    }
+    return lib.promise;
+  };
+  lib.has = function (group, id) { return !!(lib.data && lib.data[group] && lib.data[group][String(id)]); };
+  lib.toggle = function (group, id) {
+    return lib.ready().then(function () {
+      if (!lib.data[group]) lib.data[group] = {};
+      var key = String(id), was = !!lib.data[group][key];
+      if (was) delete lib.data[group][key]; else lib.data[group][key] = true;
+      return api.get('user_list', { action: 'add', group: group, post_id: id }, { noRetry: true }).then(function () {
+        return !was;
+      }).catch(function (e) {
+        if (was) lib.data[group][key] = true; else delete lib.data[group][key];
+        throw e;
+      });
+    });
+  };
+  lib.list = function (group, page) {
+    return api.get('user_list', { action: 'list', group: group, page: page || 1, orderby: 'add_list', order: 'DESC' });
+  };
   N.setSession = function (user) {
     N.session = { token: user.user_session, user: user };
     N.store.set('session', N.session);
   };
   N.logout = function (silent) {
     var p = N.isLoggedIn() ? api.call('logout', {}).catch(function () {}) : Promise.resolve();
-    N.session = null; N.store.del('session');
+    N.session = null; N.store.del('session'); lib.clear();
     if (!silent && N.onLogout) N.onLogout();
     return p;
   };

@@ -458,6 +458,24 @@
       btns.appendChild(playB);
       var epB = null;
       if (isSeries && items.length) { epB = ui.btn(N.t('episodes'), function () { openEps(); }, '', 'list'); btns.appendChild(epB); }
+      if (N.isLoggedIn()) {
+        ['watchlist', 'favorite'].forEach(function (group) {
+          var icon = group === 'watchlist' ? 'eye' : 'heart';
+          var b = ui.btn('', function () {
+            if (b._busy) return;
+            b._busy = true; b.classList.add('busy');
+            N.lib.toggle(group, post.id).then(function (added) {
+              paint(); N.toast(N.t(added ? (group === 'watchlist' ? 'addedWatch' : 'addedFav') : (group === 'watchlist' ? 'removedWatch' : 'removedFav')));
+            }).catch(function () {
+              paint(); N.toast(N.t('listFailed'));
+            }).then(function () { b._busy = false; b.classList.remove('busy'); });
+          }, 'io lib-' + group, icon);
+          b._label = el('span', 'io-label', N.t(group)); b.appendChild(b._label);
+          function paint() { b.classList.toggle('on', N.lib.has(group, post.id)); }
+          b.onfocus2 = function () { heroFocus(); };
+          btns.appendChild(b); N.lib.ready().then(function () { if (!dead) paint(); });
+        });
+      }
 
       /* episodes sheet */
       var sheet = null, tabs = null, wrap = null, track = null, tmeta = null, seasons = [], map = {}, epMem = {}, tileBy = {}, backToSheet = false;
@@ -819,19 +837,19 @@
   };
 
   var SORTS = [['date', 'newest'], ['favorite', 'popular'], ['update', 'updated']];
-  function archiveList(root, params, restore) {
-    var dead = false, page = 1, pages = 1, loading = false, total = 0, cells = [], skels = [], sort = (restore && restore.sort) || 'date', wantIdx = restore && restore.idx || 0, restoring = !!(restore && restore.idx > 0), gen = 0, COLS = 7;
+  function pagedGrid(root, o, restore) {
+    var dead = false, page = 1, pages = 1, loading = false, total = 0, cells = [], skels = [], tab = (restore && restore.tab) || o.tabs[0][0], wantIdx = restore && restore.idx || 0, restoring = !!(restore && restore.idx > 0), gen = 0, COLS = 7;
     root.classList.add('archive', 'gridpage'); N.stage.dim(0.72);
     var box = el('div', 'arch'); root.appendChild(box);
-    var head = el('div', 'head ah'); head.textContent = params.name || params.slug; var cnt = el('small', 'tab', ''); head.appendChild(cnt); box.appendChild(head);
+    var head = el('div', 'head ah'); head.textContent = o.title(); var cnt = el('small', 'tab', ''); head.appendChild(cnt); box.appendChild(head);
     var sorts = el('div', 'sorts head'); box.appendChild(sorts);
     var grid = el('div', 'ggrid'); box.appendChild(grid);
     box.reveal = function (e) { var ty = ui.vscroll(box, e._cell || e, 260); box.classList.toggle('scrolled', ty < 0); };
-    SORTS.forEach(function (s) {
-      var p = ui.pill(N.t(s[1]), function () { if (sort === s[0]) return; sort = s[0]; paint(); reset(); }, sort === s[0]); p._k = s[0]; sorts.appendChild(p);
+    o.tabs.forEach(function (s) {
+      var p = ui.pill(N.t(s[1]), function () { if (tab === s[0]) return; tab = s[0]; paint(); reset(); }, tab === s[0]); p._k = s[0]; sorts.appendChild(p);
       p.onnav = function (dir) { if (dir === 'down') return cells[0] ? cells[0].card : true; if (dir === 'up') return true; return false; };
     });
-    function paint() { for (var i = 0; i < sorts.children.length; i++) sorts.children[i].classList.toggle('cur', sorts.children[i]._k === sort); }
+    function paint() { for (var i = 0; i < sorts.children.length; i++) sorts.children[i].classList.toggle('cur', sorts.children[i]._k === tab); }
     function addSkels(n) { for (var i = 0; i < n; i++) { var c = el('div', 'gcell'); c.appendChild(ui.skelCard('grid')); skels.push(c); grid.appendChild(c); } }
     function clearSkels() { skels.forEach(function (s) { if (s.parentNode) s.parentNode.removeChild(s); }); skels = []; }
     function reset() {
@@ -840,7 +858,7 @@
     }
     function load() {
       if (loading) return; loading = true; var my = gen; addSkels(page === 1 ? 14 : 7);
-      N.api.get('archive', { slugs: params.slug, streamonly: 1, page: page, orderby: sort, order: 'desc' }).then(function (r) {
+      o.fetch(tab, page).then(function (r) {
         if (dead || my !== gen) return;
         loading = false; clearSkels();
         var first = cells.length === 0;
@@ -855,20 +873,49 @@
           };
           cells.push(cell); grid.appendChild(cell);
         });
+        if (first && !cells.length && o.empty) {
+          var empty = el('div', 'list-empty'); empty.appendChild(el('div', 'm', N.t(o.empty[tab])));
+          empty.appendChild(el('div', 'hint', N.t('emptyHint'))); grid.appendChild(empty);
+        }
         for (var k = 0; k < Math.min(cells.length, 3 * COLS); k++) ui.load(cells[k].card);
         if (first && !restoring) N.nav.focus(cells[0] ? cells[0].card : sorts.firstChild, true);
         if (restoring) {
           if (wantIdx < cells.length) { restoring = false; instant(root, function () { N.nav.focus(cells[wantIdx].card, true); }); }
           else if (page < pages) { page++; load(); } else { restoring = false; N.nav.focus(cells[0] ? cells[0].card : sorts.firstChild, true); }
         }
-      }).catch(function (e) { loading = false; if (!dead && my === gen) { clearSkels(); if (!cells.length) errorView(root, e, function () { N.go('archive', params, { replace: true }); }); } });
+      }).catch(function (e) { loading = false; if (!dead && my === gen) { clearSkels(); if (!cells.length) errorView(root, e, function () { o.retry(); }); } });
     }
     load();
     return {
       destroy: function () { dead = true; },
-      focusState: function () { for (var i = 0; i < cells.length; i++) if (cells[i].card === N.nav.cur) return { idx: i, sort: sort }; return null; }
+      focusState: function () { for (var i = 0; i < cells.length; i++) if (cells[i].card === N.nav.cur) return { idx: i, tab: tab }; return { tab: tab }; }
     };
   }
+  function archiveList(root, params, restore) {
+    return pagedGrid(root, {
+      title: function () { return params.name || params.slug; },
+      tabs: SORTS,
+      fetch: function (sort, page) { return N.api.get('archive', { slugs: params.slug, streamonly: 1, page: page, orderby: sort, order: 'desc' }); },
+      retry: function () { N.go('archive', params, { replace: true }); }
+    }, restore && { idx: restore.idx, tab: restore.sort });
+  }
+
+  S.mylist = function (root, params, restore) {
+    if (!N.isLoggedIn()) {
+      root.classList.add('archive'); N.stage.dim(0.72);
+      var m = el('div', 'center-msg'), text = el('div', 'm', N.t('listLogin'));
+      var signIn = ui.btn(N.t('signIn'), function () { N.go('login', {}, { reset: true }); }, 'primary');
+      m.appendChild(text); m.appendChild(signIn); root.appendChild(m); N.nav.focus(signIn, true);
+      return {};
+    }
+    return pagedGrid(root, {
+      title: function () { return N.t('mylist'); },
+      tabs: [['watchlist', 'watchlist'], ['favorite', 'favorites']],
+      empty: { watchlist: 'emptyWatch', favorite: 'emptyFav' },
+      fetch: function (group, page) { return N.lib.list(group, page); },
+      retry: function () { N.go('mylist', {}, { replace: true }); }
+    }, restore);
+  };
 
   /* ================= Settings ================= */
   S.settings = function (root, params, restore) {

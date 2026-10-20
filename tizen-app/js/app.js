@@ -5,6 +5,7 @@
   var RAIL = [
     ['search', 'search', function () { N.go('search', {}, { reset: true }); }],
     ['home', 'home', function () { N.go('home', {}, { reset: true }); }],
+    ['mylist', 'mylist', function () { N.go('mylist', {}, { reset: true }); }],
     ['movies', 'movies', function () { N.go('archive', { slug: 'movies', name: N.t('movies') }, { reset: true }); }],
     ['series', 'series', function () { N.go('archive', { slug: 'series', name: N.t('series') }, { reset: true }); }],
     ['anime', 'anime', function () { N.go('archive', { slug: 'anime', name: N.t('anime') }, { reset: true }); }],

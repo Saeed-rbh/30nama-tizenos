@@ -118,6 +118,13 @@ html[dir=rtl] .rail-panel{background:linear-gradient(to left,rgba(7,8,11,.97) 0,
 .btn.focus{transform:scale(1.04)}
 .btn.danger{color:var(--danger)}
 .btn+.btn{margin-inline-start:16px}
+.btn.io{position:relative;width:72px;padding:0;border-radius:50%;overflow:visible}
+.btn.io+.btn.io{margin-inline-start:12px}
+.btn.io .ico{margin:0;font-size:34px}
+.btn.io.on .ico{fill:currentColor}
+.btn.io .io-label{position:absolute;top:84px;inset-inline-start:50%;transform:translateX(calc(var(--dir) * -50%));opacity:0;color:var(--text-1);font-size:var(--t-cap);font-weight:500;white-space:nowrap;pointer-events:none;transition:opacity var(--d-focus) var(--e-out)}
+.btn.io.focus .io-label{opacity:1}
+.btn.io.busy{opacity:.6}
 .pill{display:inline-flex;align-items:center;height:56px;padding-inline:28px;border-radius:var(--r-pill);background:rgba(255,255,255,.08);color:var(--text-2);font-size:var(--t-body);font-weight:600;white-space:nowrap}
 .pill.cur{color:var(--text-1);background:rgba(255,255,255,.16)}
 .pill.cur::after{content:"";position:absolute;inset-inline:28px;bottom:7px;height:3px;border-radius:2px;background:var(--accent);z-index:1}
@@ -358,6 +365,9 @@ html[dir=rtl] .ep .ep-p i{transform-origin:right}
 .tiles .card{margin-inline-end:24px;margin-bottom:32px}
 .ggrid{position:absolute;top:250px;inset-inline-start:var(--start);width:1700px;display:flex;flex-wrap:wrap}
 .ggrid .gcell{margin-inline-end:32px;margin-bottom:42px}
+.list-empty{width:100%;min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.list-empty .m{font-size:var(--t-body-l);color:var(--text-2)}
+.list-empty .hint{margin-top:12px;font-size:var(--t-body);color:var(--text-3)}
 .noanim .rows,.noanim .track,.noanim .arch,.noanim .rgrid-w,.noanim .eptrack{transition:none!important}
 
 /* ---------- settings ---------- */

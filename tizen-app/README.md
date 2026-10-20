@@ -14,7 +14,7 @@ Plain HTML/CSS/JS web app (no build step). Base resolution 1920x1080.
 - `js/stage.js`: persistent backdrop (two layers, decode-then-crossfade, Ken Burns, poster-bleed fallback).
 - `js/ui.js`: icons, card factory (poster/land/top/grid/tile), meta line, start-anchored tracks, vertical scroll helper, episode tiles.
 - `js/player.js`: AVPlay backend (when `window.webapis.avplay` exists) or `<video>` + hls.js; WebVTT overlay (en/fa/off, size from settings), resume, scrubber with seek bubble, skip intro/recap pill, Up Next card with autoplay countdown, audio/subtitle sheet (Up), episodes sheet (Down), observer heartbeat (10 s).
-- `js/screens.js`: QR login, Home (billboard + rows + Top 10 + continue watching), Details (+ seasons/episodes sheet), Search (on-screen keyboard), Archive (genres + paged grid + sort), Settings (two panes).
+- `js/screens.js`: QR login, Home (billboard + rows + Top 10 + continue watching), Details (+ seasons/episodes sheet and Watchlist/Favorite toggles), Search (on-screen keyboard), Archive (genres + paged grid + sort), My list (Watchlist/Favorites), Settings (two panes).
 - `js/app.js`: boot, router with page transitions, icon rail (expands on focus), exit/sign-out confirm sheets, splash, Back handling (content -> rail -> exit confirm).
 - `js/lib/`: `qrcode.js` (qrcode-generator 1.4.4), `hls.min.js` (hls.js 1.5.17), both bundled locally.
 - `tools/devserver.js`: static server plus `/proxy?url=` (adds CORS, rewrites m3u8 URIs). The app routes all requests through it only when `location.hostname` is localhost.
