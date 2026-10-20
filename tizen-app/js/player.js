@@ -1,6 +1,6 @@
 /* Player: Tizen AVPlay when available, else <video> + hls.js. Own WebVTT overlay. */
 (function () {
-  var K = N.keys, $ = N.$;
+  var K = N.keys, $ = N.$, ui = N.ui;
   var P = N.player = {
     open: false, items: [], index: 0, post: null, be: null, paused: false,
     cues: [], subLang: 'off', subCache: {}, hbTimer: null, tickTimer: null, osdTimer: null,
@@ -20,6 +20,12 @@
         try { av.open(String(url)); } catch (e) { P.onError('open ' + (e && e.message || e)); return; }
         av.setDisplayRect(0, 0, 1920, 1080);
         try { av.setDisplayMethod('PLAYER_DISPLAY_MODE_LETTER_BOX'); } catch (e) {}
+        // Direct download files (mkv/mp4, often 4K HDR remuxes): allow UHD decode and buffer deeper for high bitrates
+        if (!/\.m3u8(\?|$)/i.test(String(url))) {
+          try { av.setStreamingProperty('SET_MODE_4K', 'TRUE'); } catch (e) {}
+          try { av.setBufferingParam('PLAYER_BUFFER_FOR_PLAY', 'PLAYER_BUFFER_SIZE_IN_SECOND', 10); } catch (e) {}
+          try { av.setBufferingParam('PLAYER_BUFFER_FOR_RESUME', 'PLAYER_BUFFER_SIZE_IN_SECOND', 15); } catch (e) {}
+        }
         av.setListener({
           onbufferingstart: function () { P.spin(true); },
           onbufferingcomplete: function () { P.spin(false); },
@@ -30,6 +36,18 @@
           onsubtitlechange: function () {}
         });
         av.prepareAsync(function () {
+          if (isDirectUrl(url)) { // TVs can't decode DTS / TrueHD: no playable audio track = skip this file
+            var chk = null;
+            try {
+              var ci = -1; try { var cs = av.getCurrentStreamInfo(); for (var q = 0; q < cs.length; q++) if (cs[q].type === 'AUDIO') ci = cs[q].index; } catch (e) {}
+              chk = N.direct.audioCheck(av.getTotalTrackInfo(), ci);
+            } catch (e) {}
+            if (chk) {
+              N.direct.setVerdict(url, chk.ok ? 'ok' : 'bad');
+              if (!chk.ok) { P.onError('no playable audio'); return; }
+              if (chk.select >= 0) { try { av.setSelectTrack('AUDIO', chk.select); } catch (e) {} }
+            }
+          }
           try { state.dur = av.getDuration() / 1000; } catch (e) {}
           av.play();
           if (startSec > 5) { try { av.seekTo(Math.floor(startSec * 1000)); } catch (e) {} }
@@ -115,17 +133,35 @@
     if (e instanceof Array) return entryUrl(e[0]);
     return entryUrl(e['default'] || e.file || e.url || e.src || e.link || e.m3u8 || e.path || e.source);
   }
-  P.pickUrl = function (m) {
+  var isDirectUrl = function (u) { return /\.(mkv|mp4|m4v)([?#]|$)/i.test(String(u)); };
+  // best playable download file ("Max"): see N.direct.cands; P.failed = urls already tried-and-failed for this item
+  P.failed = {};
+  function bestDirect(m) { var c = N.direct.cands(m, P.failed)[0]; return c && c.url; }
+  // noDirect: HLS only (used for the fallback after a direct file fails)
+  P.pickUrl = function (m, noDirect) {
     if (!(m instanceof Array)) return entryUrl(m);
+    var mode = P.dlMode(), dl = hasAV() && !noDirect && mode !== 'off' ? bestDirect(m) : null;
+    if (dl && mode === 'auto') return dl;
     // Always prefer the highest fixed quality (e.g. 2160p); Auto only as fallback
     var best = null, bestH = -1, auto = null, i, e, u;
     for (i = 0; i < m.length; i++) {
-      e = m[i]; u = entryUrl(e); if (!u) continue;
+      e = m[i]; u = entryUrl(e); if (!u || (e && e.direct)) continue;
       if (e && /^(auto|خودکار)$/i.test(String(e.label || ''))) { auto = u; continue; }
       var h = parseInt(String(e && e.label || '').replace(/\D/g, ''), 10) || 0;
       if (h > bestH) { best = u; bestH = h; }
     }
-    return best || auto;
+    return best || auto || dl;
+  };
+  // download files setting: 'off' (not fetched/listed) | 'menu' (Quality menu only) | 'auto' (play best file first)
+  P.dlMode = function () { var v = N.store.get('dlMode', null); if (v === null) v = N.store.get('preferDl', false) === true ? 'auto' : 'menu'; return v; };
+  // quality entries the current backend can play
+  P.qualities = function (item) {
+    var m = item && item.file && item.file.m3u8, out = [];
+    if (!(m instanceof Array)) return out;
+    m.forEach(function (e) { var u = entryUrl(e); if (u && !(e && e.direct)) out.push({ url: String(u).replace(/^\s+|\s+$/g, ''), label: (e && e.label) || 'HLS' }); });
+    var c = hasAV() && P.dlMode() !== 'off' ? N.direct.cands(m, P.failed)[0] : null; // one "Max" entry: best playable download file
+    if (c) out.unshift({ url: c.url, label: N.t('maxQ') + ' · ' + (N.direct.short(c.e.p) || 'MKV'), max: true });
+    return out;
   };
 
   /* ---------- subtitles ---------- */
@@ -163,8 +199,20 @@
       P.subCache[u] = P.parseVTT(t); if (P.subLang === lang) P.cues = P.subCache[u];
     }).catch(function () { N.toast(N.t('subFailed')); });
   };
+  // subtitle sync offset (s, + = subtitles later), remembered per title + source (stream vs each download file)
+  function offKey() {
+    var item = P.items[P.index], id = (item && item.info && item.info.file_id) || '';
+    return id + '|' + (P.curDirect ? decodeURIComponent(String(P.curUrl || '').split(/[?#]/)[0].split('/').pop()) : 'hls');
+  }
+  P.subOff = function () { return Number((N.store.get('subOff', {}) || {})[offKey()]) || 0; };
+  P.setSubOff = function (v) {
+    var m = N.store.get('subOff', {}) || {}, k = offKey(); v = Math.round(v * 10) / 10;
+    delete m[k]; if (v) m[k] = v;
+    var ks = Object.keys(m); while (ks.length > 300) delete m[ks.shift()];
+    N.store.set('subOff', m); P.subOffV = v; renderSub(P.be ? P.be.time() : 0);
+  };
   function renderSub(t) {
-    var cs = P.cues, txt = '';
+    var cs = P.cues, txt = ''; t -= P.subOffV || 0;
     if (cs.length) {
       var lo = 0, hi = cs.length - 1, idx = -1;
       while (lo <= hi) { var mid = (lo + hi) >> 1; if (cs[mid].s <= t) { idx = mid; lo = mid + 1; } else hi = mid - 1; }
@@ -196,13 +244,16 @@
     if (P.items.length > 1 || info.season) return 'S' + (info.season || 1) + ' · E' + N.ui.epLabel(info.episode, i + 1) + (N.ui.epName(item) ? ' — ' + N.ui.epName(item) : '');
     return '';
   }
-  P.playIndex = function (i) {
+  // o (optional): {url, start, keepSub} for quality switches / fallback
+  P.playIndex = function (i, o) {
+    o = o || {};
     var item = P.items[i]; if (!item) return;
     P.reportNow();
     if (P.be) P.be.stop();
-    P.index = i; P.paused = false; P.cues = []; P.subLang = N.store.get('sub', 'off');
+    if (!o.keepFail) P.failed = {};
+    P.index = i; P.paused = false; P.cues = []; P.subLang = o.keepSub ? P.subLang : N.store.get('sub', 'off');
     $('subtitle').textContent = ''; P.hideSkip(); P.hideUpNext(true); P.closeEps(true);
-    var m3u8 = item.file && P.pickUrl(item.file.m3u8);
+    var m3u8 = o.url || (item.file && P.pickUrl(item.file.m3u8));
     if (typeof m3u8 === 'string') m3u8 = m3u8.replace(/^\s+|\s+$/g, '');
     if (!m3u8 || typeof m3u8 !== 'string') { var raw = ''; try { raw = JSON.stringify(item.file && item.file.m3u8).slice(0, 160); } catch (e) {} N.toast(N.t('noStream') + ' ' + raw, 6000); return P.close(); }
     $('osd-title').textContent = N.title(P.post);
@@ -211,11 +262,13 @@
     var start = 0, info = item.info || {};
     if (P.resume && String(P.resume.file_id) === String(info.file_id)) start = Number(P.resume.time) || 0;
     P.resume = null;
+    if (o.start !== undefined) start = o.start;
+    P.curUrl = m3u8; P.curDirect = isDirectUrl(m3u8); P.loadStart = start; P.subOffV = P.subOff();
     P.be = hasAV() ? avBackend() : videoBackend();
     P.spin(true); P.glyph(false);
     clearTimeout(P.loadT);
     var be0 = P.be;
-    P.loadT = setTimeout(function () { if (P.be === be0 && P.loading) P.onError('timeout'); }, 25000);
+    P.loadT = setTimeout(function () { if (P.be === be0 && P.loading) P.onError('timeout'); }, P.curDirect ? 45000 : 25000);
     P.loading = true;
     try { P.be.load(m3u8, start, function () {
       P.loading = false; clearTimeout(P.loadT);
@@ -224,7 +277,7 @@
       P.setSub(want); P.showOsd();
     }); } catch (e) { P.onError(String(e && e.message || e)); }
     clearInterval(P.hbTimer); P.hbTimer = setInterval(P.report, N.config.heartbeatMs);
-    P.seekAcc = 0; $('scrub').classList.remove('seeking');
+    P.seekAcc = 0; P.seekN = 0; P.seekDir = 0; $('scrub').classList.remove('seeking');
     P.tick();
   };
   P.close = function () {
@@ -240,7 +293,20 @@
     N.nav.popHandler(P.onKey);
     if (N.onPlayerClosed) N.onPlayerClosed();
   };
-  P.onError = function (m) { P.loading = false; clearTimeout(P.loadT); N.toast(N.t('playErr') + ': ' + m, 6000); P.spin(false); P.showOsd(); };
+  P.onError = function (m) {
+    // a direct file failed: try the next-ranked download file (each URL once), then fall back to the best HLS entry at the same position
+    if (P.open && P.curDirect) {
+      var item = P.items[P.index], t = Math.max((P.be && P.be.time()) || 0, P.loadStart || 0);
+      P.failed[String(P.curUrl).replace(/^\s+|\s+$/g, '')] = 1;
+      var nx = item && item.file && bestDirect(item.file.m3u8);
+      if (nx) { P.playIndex(P.index, { url: nx, start: t, keepSub: true, keepFail: true }); return; }
+      var u = item && item.file && P.pickUrl(item.file.m3u8, true);
+      if (u && !isDirectUrl(u)) {
+        N.toast(N.t('dlFallback'), 4000);
+        P.playIndex(P.index, { url: String(u).replace(/^\s+|\s+$/g, ''), start: t, keepSub: true }); return;
+      }
+    }
+    P.loading = false; clearTimeout(P.loadT); N.toast(N.t('playErr') + ': ' + m, 6000); P.spin(false); P.showOsd(); };
   P.onEnded = function () { if (P.index + 1 < P.items.length) P.playIndex(P.index + 1); else P.close(); };
 
   /* ---------- progress reporting (observer) ---------- */
@@ -266,6 +332,12 @@
   }
   function clockNow() { var d = new Date(), h = d.getHours(), m = d.getMinutes(); return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m; }
   function tn(v) { if (typeof v === 'string' && v.indexOf(':') > 0) { var p = v.split(':'), r = 0; for (var i = 0; i < p.length; i++) r = r * 60 + (parseFloat(p[i]) || 0); return r; } return Number(v); }
+  function fmtDelta(s) {
+    s = Math.round(s); var u = function (k) { return N.t(k); }, h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), r = s % 60;
+    if (h) return h + u('uH') + (m ? ' ' + m + u('uM') : '');
+    if (m) return m + u('uM') + (r ? ' ' + r + u('uS') : '');
+    return r + u('uS');
+  }
   P.tick = function () {
     if (!P.be) return;
     var t = P.be.time(), d = P.be.duration(), tt = t;
@@ -275,7 +347,7 @@
     setT('osd-t1', N.fmtTime(tt)); setT('osd-t2', d ? '-' + N.fmtTime(Math.max(0, d - tt)) : '');
     setT('osd-clock', clockNow());
     if (P.seekAcc) {
-      setT('bub-t', N.fmtTime(tt)); setT('bub-d', (P.seekAcc > 0 ? '+' : '') + P.seekAcc + 's');
+      setT('bub-t', N.fmtTime(tt)); setT('bub-d', (P.seekAcc > 0 ? '+' : '-') + fmtDelta(Math.abs(P.seekAcc)));
       $('scrub').querySelector('.bubble').style.transform = 'translateX(' + x.toFixed(1) + 'px)';
     }
     var o = (P.items[P.index] || {}).options || {}, show = null;
@@ -325,12 +397,16 @@
     P.glyph(P.paused ? 'pause' : 'play');
     P.showOsd();
   };
-  P.seekBy = function (sec) {
+  var SEEK_STEPS = [10, 10, 10, 10, 10, 20, 30, 60, 120, 180, 300]; // per consecutive press; last repeats (cap 300s, x3 for FF/RW -> cap 600s)
+  P.seekN = 0; P.seekDir = 0;
+  P.seekBy = function (dir, mult) {
     if (!P.be) return;
+    if (dir !== P.seekDir) { P.seekDir = dir; P.seekN = 0; }
+    var sec = dir * Math.min(SEEK_STEPS[Math.min(P.seekN++, SEEK_STEPS.length - 1)] * (mult || 1), 600);
     P.seekAcc += sec; clearTimeout(P.seekTimer);
     $('scrub').classList.add('seeking'); P.showOsd(); P.tick();
     P.seekTimer = setTimeout(function () {
-      var d = P.be.duration(), t = P.be.time() + P.seekAcc; P.seekAcc = 0;
+      var d = P.be.duration(), t = P.be.time() + P.seekAcc; P.seekAcc = 0; P.seekN = 0; P.seekDir = 0;
       $('scrub').classList.remove('seeking');
       if (d) t = Math.min(t, d - 2);
       P.be.seek(Math.max(0, t));
@@ -369,21 +445,36 @@
   /* ---------- menu (audio / subs) : end-side sheet ---------- */
   P.openMenu = function () {
     var m = $('player-menu'); m.innerHTML = ''; var item = P.items[P.index];
+    var w = N.el('div', 'pm-in'); m.appendChild(w); // clipped by the sheet; scrolled with translateY as focus moves (same as the other vertical panes)
+    w.reveal = function (e) { ui.vscroll(w, e, 220); };
     function section(title, opts, onPick) {
-      if (title) m.appendChild(N.el('div', 'h', title));
+      if (title) w.appendChild(N.el('div', 'h', title));
       opts.forEach(function (o) {
         var b = N.el('div', 'opt f fl' + (o.sel ? ' sel' : '')); b.appendChild(N.ui.icon('check')); b.appendChild(N.el('span', '', o.label));
         b.onclick = function () { onPick(o); P.closeMenu(); };
-        m.appendChild(b);
+        w.appendChild(b);
       });
     }
     var audio = P.be.audioTracks();
     if (audio.length) section(N.t('audio'), audio, function (o) { P.be.setAudio(o.id); });
+    var q = P.qualities(item);
+    if (q.length > 1) {
+      q.forEach(function (x) { x.sel = x.max ? !!P.curDirect : x.url === P.curUrl; });
+      section(N.t('quality'), q, function (o) { if (!o.sel) P.playIndex(P.index, { url: o.url, start: P.be.time(), keepSub: true }); });
+    }
     var sopts = [{ id: 'off', label: N.t('off'), sel: P.subLang === 'off' }];
     availableSubs(item).forEach(function (l) { sopts.push({ id: l, label: l === 'en' ? N.t('english') : N.t('persian'), sel: P.subLang === l }); });
     section(N.t('subtitles'), sopts, function (o) { N.store.set('sub', o.id); P.setSub(o.id); });
+    if (P.subLang !== 'off') {
+      var r = N.el('div', 'opt f fl sync'), val = N.el('span', 'v');
+      var paint = function () { var v = P.subOffV || 0; val.textContent = '‹ ' + (v > 0 ? '+' : '') + v.toFixed(1) + 's ›'; };
+      r.appendChild(N.ui.icon('check')); r.appendChild(N.el('span', '', N.t('subSync'))); r.appendChild(val); paint();
+      r.onnav = function (dir) { if (dir === 'left' || dir === 'right') { P.setSubOff((P.subOffV || 0) + 0.5 * ui.step(dir)); paint(); return true; } return false; };
+      r.onclick = function () { P.setSubOff(0); paint(); };
+      w.appendChild(r); w.appendChild(N.el('div', 'hint', N.t('subSyncHint')));
+    }
     m.classList.add('open'); P.menuOpen = true; N.nav.pushScope(m);
-    var sel = m.querySelector('.opt.sel'); N.nav.focus(sel || m.querySelector('.opt'), true);
+    var sel = m.querySelector('.opt.sel'); N.nav.focus(sel || m.querySelector('.opt'));
     $('osd').classList.remove('off'); $('player').classList.add('osd-on');
   };
   P.closeMenu = function (silent) {
@@ -394,23 +485,48 @@
   /* ---------- episodes sheet (series, Down) ---------- */
   P.openEps = function () {
     if (P.items.length < 2) return;
-    var box = $('player-eps'), tr = box.querySelector('.eptrack'); tr.innerHTML = '';
-    var cur = P.items[P.index], season = (cur.info && cur.info.season) || 1, tiles = [], focusEl = null;
+    var box = $('player-eps'), tr = box.querySelector('.eptrack'), cur = P.items[P.index], curS = (cur.info && cur.info.season) || 1, shown = null, tiles = [];
     var hd = box.querySelector('.peps-h'); if (!hd) { hd = N.el('div', 'peps-h'); box.insertBefore(hd, tr); }
-    P.items.forEach(function (it, i) {
-      if (((it.info && it.info.season) || 1) !== season) return;
-      var t = N.ui.epTile(it, i, {}); t.onclick = function () { P.closeEps(); P.playIndex(i); };
-      t.onfocus2 = function () { N.ui.slideTo(tr, t._x); };
-      if (i === P.index) { t.classList.add('now'); t.appendChild(N.el('div', 'np', N.t('nowPlaying'))); focusEl = t; }
-      tr.appendChild(t); tiles.push(t);
+    var tabs = box.querySelector('.tabs'); if (!tabs) { tabs = N.el('div', 'tabs'); box.insertBefore(tabs, tr); }
+    tabs.innerHTML = '';
+    var map = {}, seasons = [];
+    P.items.forEach(function (it, i) { var s = (it.info && it.info.season) || 1; if (!map[s]) { map[s] = []; seasons.push(s); } map[s].push(i); });
+    var multi = seasons.length > 1; box.classList.toggle('ms', multi);
+    // tile to focus when entering a season: the playing episode if it is in there, else the first
+    function target() { for (var q = 0; q < tiles.length; q++) if (tiles[q]._idx === P.index) return tiles[q]; return tiles[0]; }
+    function build(s) {
+      shown = s; tr.innerHTML = ''; tiles = [];
+      map[s].forEach(function (i) {
+        var it = P.items[i], t = N.ui.epTile(it, i, {}); t._idx = i; t.onclick = function () { P.closeEps(); if (i === P.index) { if (P.paused) P.togglePause(); } else P.playIndex(i); };
+        t.onfocus2 = function () { N.ui.slideTo(tr, t._x); };
+        if (multi) t.onnav = function (dir) {
+          if (dir !== 'up') return false;
+          for (var q = 0; q < tabs.children.length; q++) if (tabs.children[q]._s === shown) return tabs.children[q];
+          return true;
+        };
+        if (i === P.index) { t.classList.add('now'); t.appendChild(N.el('div', 'np', N.t('nowPlaying'))); }
+        tr.appendChild(t); tiles.push(t);
+      });
+      for (var q = 0; q < tabs.children.length; q++) tabs.children[q].classList.toggle('cur', tabs.children[q]._s === s);
+      hd.textContent = (multi ? '' : N.t('season') + ' ' + s + '  ·  ') + tiles.length + ' ' + N.t('episodes');
+      N.ui.layoutTrack(tr, tiles, tiles.map(function () { return 360; }));
+      // start from a clean transform (nothing left over from a previous season); put the target episode at the start edge without animating
+      var f0 = target();
+      tr.style.transition = 'none'; tr.style.transform = ''; tr._s = null; N.ui.slideTo(tr, f0 ? f0._x : 184); void tr.offsetWidth; tr.style.transition = '';
+    }
+    if (multi) seasons.forEach(function (s, si) {
+      var t = N.ui.pill(N.t('season') + ' ' + s, function () { N.nav.focus(target(), true); }, false); t._s = s;
+      t.onfocus2 = function () { if (s !== shown) build(s); };
+      t.onnav = function (dir) {
+        if (dir === 'down') return target() || true;
+        if (dir === 'up') return true;
+        return tabs.children[si + N.ui.step(dir)] || true;
+      };
+      tabs.appendChild(t);
     });
-    hd.textContent = N.t('season') + ' ' + season + '  \u00b7  ' + tiles.length + ' ' + N.t('episodes');
-    N.ui.layoutTrack(tr, tiles, tiles.map(function () { return 360; }));
-    // start from a clean transform (nothing left over from a previous season); put the current episode at the start edge without animating
-    var f0 = focusEl || tiles[0];
-    tr.style.transition = 'none'; tr.style.transform = ''; tr._s = null; N.ui.slideTo(tr, f0 ? f0._x : 184); void tr.offsetWidth; tr.style.transition = '';
+    build(curS);
     box.classList.add('open'); epsOpen = true; N.nav.pushScope(box);
-    N.nav.focus(f0, true); $('osd').classList.remove('off'); $('player').classList.add('osd-on');
+    N.nav.focus(target(), true); $('osd').classList.remove('off'); $('player').classList.add('osd-on');
   };
   P.closeEps = function (silent) {
     if (!epsOpen) return;
@@ -426,7 +542,8 @@
       return false; // let spatial nav handle arrows/enter inside the menu scope
     }
     if (epsOpen) {
-      if (k === K.BACK || k === K.ESC || k === K.BACKSPACE || k === K.DOWN) { P.closeEps(); return true; }
+      if (k === K.BACK || k === K.ESC || k === K.BACKSPACE) { P.closeEps(); return true; }
+      if (k === K.DOWN && !(N.nav.cur && N.nav.cur.classList.contains('pill'))) { P.closeEps(); return true; } // Down on the season row falls through to nav (-> episodes)
       return false;
     }
     if (k === K.BACK || k === K.ESC || k === K.BACKSPACE) {
@@ -465,10 +582,10 @@
     if (k === K.PLAY) { if (P.paused) P.togglePause(); return true; }
     if (k === K.PAUSE) { if (!P.paused) P.togglePause(); return true; }
     if (k === K.ENTER) { P.togglePause(); return true; }
-    if (k === K.LEFT) { P.seekBy(-10); return true; }
-    if (k === K.RIGHT) { P.seekBy(10); return true; }
-    if (k === K.RW) { P.seekBy(-30); return true; }
-    if (k === K.FF) { P.seekBy(30); return true; }
+    if (k === K.LEFT) { P.seekBy(-1); return true; }
+    if (k === K.RIGHT) { P.seekBy(1); return true; }
+    if (k === K.RW) { P.seekBy(-1, 3); return true; }
+    if (k === K.FF) { P.seekBy(1, 3); return true; }
     if (k === K.UP) { P.openMenu(); return true; }
     if (k === K.DOWN) { if (P.items.length > 1) P.openEps(); return true; }
     return true;

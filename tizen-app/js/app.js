@@ -241,6 +241,8 @@
     content = $('content');
     if (N.store.get('calm', false)) document.body.classList.add('calm');
     N.nav.registerKeys();
+    // takeover is opt-in: the background service is only started if the user turned it on in Settings
+    try { if (N.store.get('tkOn', false) === true) N.takeover.ensureService(function () {}); } catch (e) {}
     splash.dotsT = setTimeout(function () { var d = document.querySelector('#splash .dots3'); if (d) d.classList.add('on'); }, 1800);
     splash.failT = setTimeout(splashExit, 10000);
     boot();
