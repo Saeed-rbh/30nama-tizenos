@@ -1,17 +1,17 @@
 /* Boot, router, rail, modals, splash, back handling. */
 (function () {
-  var stack = [], current = null, rootEl = null, swapT = null, $ = N.$, el = N.el;
+  var stack = [], current = null, rootEl = null, swapT = null, booted = false, $ = N.$, el = N.el;
   var content = null;
   var RAIL = [
     ['search', 'search', function () { N.go('search', {}, { reset: true }); }],
     ['home', 'home', function () { N.go('home', {}, { reset: true }); }],
+    ['mylist', 'mylist', function () { N.go('mylist', {}, { reset: true }); }],
     ['movies', 'movies', function () { N.go('archive', { slug: 'movies', name: N.t('movies') }, { reset: true }); }],
     ['series', 'series', function () { N.go('archive', { slug: 'series', name: N.t('series') }, { reset: true }); }],
     ['anime', 'anime', function () { N.go('archive', { slug: 'anime', name: N.t('anime') }, { reset: true }); }],
     ['archive', 'archive', function () { N.go('archive', {}, { reset: true }); }],
     ['settings', 'settings', function () { N.go('settings', {}, { reset: true }); }]
   ];
-  var ACCT = ['account', 'user', function () { N.go('settings', { section: 'account' }, { reset: true }); }];
 
   /* ---------------- home cache ---------------- */
   var hc = { t: 0, p: null };
@@ -43,17 +43,16 @@
 
   /* ---------------- rail ---------------- */
   var rail = N.rail = { items: [], open: false, mem: null, pill: null, root: null };
-  var Y0 = 288, PITCH = 72, ACCT_Y = 966;
-  function yOf(i) { return i < RAIL.length ? Y0 + i * PITCH : ACCT_Y; }
+  var Y0 = 288, PITCH = 72;
+  function yOf(i) { return Y0 + i * PITCH; }
   rail.build = function () {
     var r = rail.root = $('rail'); r.innerHTML = ''; rail.items = [];
     r.appendChild(el('div', 'rail-base')); r.appendChild(el('div', 'rail-scrim'));
     r.appendChild(el('div', 'rail-panel')); var br = el('div', 'rail-brand'); br.appendChild(N.ui.logo()); r.appendChild(br);
     rail.pill = el('div', 'rail-pill'); r.appendChild(rail.pill);
-    RAIL.concat([ACCT]).forEach(function (m, i) {
-      var b = el('button', 'ri' + (m[0] === 'account' ? ' acct' : '')); b._key = m[0]; b._y = yOf(i); b.style.top = b._y + 'px';
-      if (m[0] === 'account') { var av = el('div', 'av'); av.appendChild(N.ui.icon('user')); b.appendChild(av); }
-      else b.appendChild(N.ui.icon(m[1]));
+    RAIL.forEach(function (m, i) {
+      var b = el('button', 'ri'); b._key = m[0]; b._y = yOf(i); b.style.top = b._y + 'px';
+      b.appendChild(N.ui.icon(m[1]));
       var lb = el('span', 'lb', N.t(m[0])); lb.style.transitionDelay = (i * 20) + 'ms'; b.appendChild(lb);
       b.onenter = function () { rail.go(m); };
       b.onclick = function () { rail.go(m); };
@@ -73,7 +72,6 @@
     while (e && e.name === 'details' && i > 0) { i--; e = stack[i]; }
     if (!e) return '';
     if (e.name === 'archive' && e.params && (e.params.slug === 'movies' || e.params.slug === 'series' || e.params.slug === 'anime')) return e.params.slug;
-    if (e.name === 'settings' && e.params && e.params.section === 'account') return 'account';
     return e.name;
   };
   rail.mark = function () {
@@ -158,6 +156,7 @@
     var r = el('div', 'screen enter ' + entry.name); content.appendChild(r); rootEl = r;
     setChrome(entry.name);
     rail.mark();
+    current = null; // a throwing screen must not leave the destroyed one in charge of Back
     current = N.screens[entry.name](r, entry.params || {}, entry.focus) || {};
   }
   function render(entry) {
@@ -184,10 +183,13 @@
     if (N.player.open) { N.player.close(); return; }
     if (modal) { N.closeModal(); return; }
     if (rail.open) { rail.close(true); return; } // Back on the menu: collapse it and return to the content
-    if (current && current.back && current.back()) return;
+    if (current && current.back) {
+      try { if (current.back()) return; } catch (e) { try { console.warn('back', e && e.message); } catch (x) {} }
+    }
     if (stack.length > 1) { stack.pop(); render(stack[stack.length - 1]); return; }
     var top = stack[stack.length - 1];
-    if (top && top.name !== 'home' && top.name !== 'login' && rail.visible()) { N.go('home', {}, { reset: true }); return; } // other top-level screens go Home
+    if (!top && !booted) { N.confirmExit(); return; } // splash / boot error: the API isn't up, Home can't load
+    if (!top || (top.name !== 'home' && top.name !== 'login')) { N.go('home', {}, { reset: true }); return; } // empty history or another top-level screen: Home
     N.confirmExit(); // Home (or login): exit confirm
   };
   N.onLogout = function () { N.dropHome(); N.go('login', {}, { reset: true }); };
@@ -210,6 +212,7 @@
   }
   function boot() {
     N.api.init().then(function () {
+      booted = true;
       rail.build();
       var p = Promise.resolve();
       if (N.isLoggedIn()) {
@@ -227,10 +230,10 @@
     }).catch(bootError);
   }
 
-  // Scale the 1920x1080 stage down for desktop preview only. Never scale up
-  // (UHD TVs that report 3840x2160 would otherwise get a blurry CSS 2x).
+  // Fit the 1920x1080 stage to the window for desktop preview. On TVs the viewport meta
+  // pins layout to 1920 CSS px (UHD panels render it via devicePixelRatio), so s is 1 there.
   function fit() {
-    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080, 1), r = document.documentElement;
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080), r = document.documentElement;
     if (Math.abs(s - 1) < 0.01) { r.style.transform = ''; return; }
     r.style.transform = 'scale(' + s + ')'; r.style.transformOrigin = '0 0';
   }
