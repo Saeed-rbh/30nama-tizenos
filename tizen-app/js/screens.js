@@ -671,6 +671,7 @@
       };
       N.nav.focus(playB, true);
       if (params.autoplay) {
+        params.autoplay = 0; // params is the history entry: returning here with Back must not start playback again
         if (items.length) play(startIdx, true); else N.toast(N.isLoggedIn() ? N.t('noStream') : N.t('playLogin'), 3500);
       }
     }

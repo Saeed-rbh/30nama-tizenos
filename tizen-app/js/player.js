@@ -229,10 +229,11 @@
   };
   P.close = function () {
     if (!P.open) return;
-    P.reportNow();
-    clearInterval(P.hbTimer); clearInterval(P.tickTimer); clearTimeout(P.osdTimer); clearTimeout(P.seekTimer);
-    if (P.be) P.be.stop();
-    P.be = null;
+    // a throw here would leave P.open set and every later Back stuck on a dead player
+    try { P.reportNow(); } catch (e) {}
+    clearInterval(P.hbTimer); clearInterval(P.tickTimer); clearTimeout(P.osdTimer); clearTimeout(P.seekTimer); clearTimeout(P.loadT);
+    try { if (P.be) P.be.stop(); } catch (e) {}
+    P.be = null; P.loading = false;
     P.closeMenu(true); P.closeEps(true); P.hideUpNext(true); P.hideSkip();
     P.open = false; $('player').classList.add('hidden'); document.body.classList.remove('playing');
     $('player').classList.remove('osd-on'); $('osd').classList.add('off');

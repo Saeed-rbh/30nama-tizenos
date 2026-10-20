@@ -1,6 +1,6 @@
 /* Boot, router, rail, modals, splash, back handling. */
 (function () {
-  var stack = [], current = null, rootEl = null, swapT = null, $ = N.$, el = N.el;
+  var stack = [], current = null, rootEl = null, swapT = null, booted = false, $ = N.$, el = N.el;
   var content = null;
   var RAIL = [
     ['search', 'search', function () { N.go('search', {}, { reset: true }); }],
@@ -155,6 +155,7 @@
     var r = el('div', 'screen enter ' + entry.name); content.appendChild(r); rootEl = r;
     setChrome(entry.name);
     rail.mark();
+    current = null; // a throwing screen must not leave the destroyed one in charge of Back
     current = N.screens[entry.name](r, entry.params || {}, entry.focus) || {};
   }
   function render(entry) {
@@ -181,10 +182,13 @@
     if (N.player.open) { N.player.close(); return; }
     if (modal) { N.closeModal(); return; }
     if (rail.open) { rail.close(true); return; } // Back on the menu: collapse it and return to the content
-    if (current && current.back && current.back()) return;
+    if (current && current.back) {
+      try { if (current.back()) return; } catch (e) { try { console.warn('back', e && e.message); } catch (x) {} }
+    }
     if (stack.length > 1) { stack.pop(); render(stack[stack.length - 1]); return; }
     var top = stack[stack.length - 1];
-    if (top && top.name !== 'home' && top.name !== 'login' && rail.visible()) { N.go('home', {}, { reset: true }); return; } // other top-level screens go Home
+    if (!top && !booted) { N.confirmExit(); return; } // splash / boot error: the API isn't up, Home can't load
+    if (!top || (top.name !== 'home' && top.name !== 'login')) { N.go('home', {}, { reset: true }); return; } // empty history or another top-level screen: Home
     N.confirmExit(); // Home (or login): exit confirm
   };
   N.onLogout = function () { N.dropHome(); N.go('login', {}, { reset: true }); };
@@ -207,6 +211,7 @@
   }
   function boot() {
     N.api.init().then(function () {
+      booted = true;
       rail.build();
       var p = Promise.resolve();
       if (N.isLoggedIn()) {
