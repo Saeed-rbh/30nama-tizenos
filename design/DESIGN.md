@@ -334,6 +334,7 @@ y 1036 │  next row header peeks (scroll affordance)
 - **Episodes** (or Down from the buttons) raises a **sheet** from the bottom: 1920x600 at y=480, background `linear-gradient(to top, #07080b 70%, rgba(7,8,11,0))`, `translateY(100%)→0`, 420ms emph. At the same time the details column moves `translateY(-140px)` and its plot fades to 0, so the title and meta stay visible above the sheet.
 - **Season tabs:** a row of pills at y=540, height 56, padding-inline 28, `--t-body` 600. The current season is text-1 with a 3px accent underline bar inside the pill. Others are text-2. Focus uses the white fill. Moving focus across tabs **switches the season immediately**. The episode track crossfades (opacity 160ms out, 220ms in) without needing OK.
 - **Episode tiles** (there are no episode stills in the API, so the tiles are typographic): 360x200, `--surface`, radius `--r-tile`, in a horizontal start-anchored track at y=640, gap 24.
+  - With TMDB on, the episode still (w300) fades in (240ms) as the tile background under a dark top/bottom gradient. The number shrinks to 36px text-1, text stays light on focus (no white fill; the ring and scale mark focus). When the API has no episode title, the TMDB title (Persian if translated, else English; generic "Episode N" names ignored) replaces the "Episode N" fallback.
   - The episode number "E05" (Vz 800, 64px, text-3) sits top-start.
   - The episode title (`--t-body` 600, 2-line clamp) sits bottom-start.
   - Duration (`--t-cap` text-2) sits top-end.

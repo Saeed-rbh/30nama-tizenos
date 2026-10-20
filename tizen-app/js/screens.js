@@ -494,6 +494,7 @@
           t._idx = idx; tileBy[idx] = t; track.appendChild(t); tiles.push(t);
         });
         ui.layoutTrack(track, tiles, tiles.map(function () { return 360; }));
+        ui.epTmdb(post, s, tiles);
         // position the track for the remembered tile (no animation, nothing carried over from another season)
         var tg = epTarget(s);
         track.style.transition = 'none'; track._s = null; track.style.transform = ''; ui.slideTo(track, tg ? tg._x : 184); void track.offsetWidth; track.style.transition = '';

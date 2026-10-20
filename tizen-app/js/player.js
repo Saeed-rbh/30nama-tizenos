@@ -436,6 +436,7 @@
     });
     hd.textContent = N.t('season') + ' ' + season + '  \u00b7  ' + tiles.length + ' ' + N.t('episodes');
     N.ui.layoutTrack(tr, tiles, tiles.map(function () { return 360; }));
+    N.ui.epTmdb(P.post, season, tiles);
     // start from a clean transform (nothing left over from a previous season); put the current episode at the start edge without animating
     var f0 = focusEl || tiles[0];
     tr.style.transition = 'none'; tr.style.transform = ''; tr._s = null; N.ui.slideTo(tr, f0 ? f0._x : 184); void tr.offsetWidth; tr.style.transition = '';

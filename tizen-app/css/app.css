@@ -305,6 +305,14 @@ html[dir=rtl] .ep .ep-p i{transform-origin:right}
 .ep.focus.now .en{color:var(--accent-2)}
 .ep.focus .np{color:var(--accent-2)}
 .ep .chk{position:absolute;top:20px;inset-inline-end:20px;font-size:28px;color:var(--good)}
+.ep .st{position:absolute;inset:0;border-radius:inherit;background:var(--surface) center/cover no-repeat;opacity:0;transition:opacity 240ms var(--e-out)}
+.ep .st::after{content:"";position:absolute;inset:0;border-radius:inherit;background:linear-gradient(to bottom,rgba(7,8,11,.55),rgba(7,8,11,0) 38%,rgba(7,8,11,.2) 50%,rgba(7,8,11,.9))}
+.ep.has-st .st{opacity:1}
+.ep.has-st,.ep.has-st.focus{color:var(--text-1)}
+.ep.has-st .en,.ep.has-st.focus .en{font-size:36px;top:16px;color:var(--text-1);text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.ep.has-st .ed,.ep.has-st.focus .ed{color:var(--text-1);text-shadow:0 1px 6px rgba(0,0,0,.6)}
+.ep.has-st .et{text-shadow:0 1px 6px rgba(0,0,0,.6)}
+.ep.has-st.now .en,.ep.has-st .np,.ep.has-st.focus .np{color:var(--accent)}
 
 /* ---------- search ---------- */
 .search .panel{position:absolute;top:0;inset-inline-start:var(--start);width:620px}

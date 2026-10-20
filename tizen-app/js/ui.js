@@ -82,7 +82,7 @@
     c._mq = ui.mq(N.title(post), 'gt');
     cell.appendChild(c); cell.appendChild(c._mq); cell.card = c; c._cell = cell; return cell;
   };
-  // episode tiles (typographic; the API has no stills)
+  // episode tiles (typographic; the API has no stills, TMDB stills/titles are layered in by epTmdb)
   ui.epName = function (it) {
     var i = (it && it.info) || {}, t = i.title || i.name || (it && it.title);
     if (t && typeof t === 'object') t = (N.lang === 'fa' && t.local) ? t.local : (t.english || t.local);
@@ -100,14 +100,29 @@
   };
   ui.epTile = function (it, idx, o) {
     o = o || {}; var i = it.info || {}, n = ui.epLabel(i.episode, idx + 1), e = el('div', 'ep f');
+    e._en = ui.epNum(i.episode) || idx + 1;
     e.appendChild(el('div', 'en tab' + (n.length > 3 ? ' sm' : ''), 'E' + (/^\d$/.test(n) ? '0' + n : n)));
-    var et = ui.mq(ui.epName(it) || (N.t('episode') + ' ' + n), 'et mqv');
-    e.appendChild(et); e._mq = et;
+    var nm = ui.epName(it), et = ui.mq(nm || (N.t('episode') + ' ' + n), 'et mqv');
+    e.appendChild(et); e._et = e._mq = et; e._etDef = !nm;
     var dur = Number(i.duration || i.time || 0);
     if (o.watched) { var ck = ui.icon('check', 'chk'); e.appendChild(ck); }
     else if (dur) { if (dur > 600) dur = dur / 60; e.appendChild(el('div', 'ed tab', Math.round(dur) + ' ' + N.t('min'))); }
     if (o.progress > 0) { var pb = el('div', 'ep-p'), pi = el('i'); pi.style.transform = 'scaleX(' + Math.min(1, o.progress) + ')'; pb.appendChild(pi); e.appendChild(pb); }
     return e;
+  };
+  // TMDB extras for epTile elements of one season of `post`: the still as background, the title where 30nama has none
+  ui.epTmdb = function (post, season, tiles) {
+    if (!N.tmdb.enabled() || !tiles.length) return;
+    N.tmdb.episodes(post, season).then(function (m) {
+      tiles.forEach(function (t) {
+        var x = m[t._en]; if (!x || !t.parentNode) return;
+        if (x.n && t._etDef) { t._etDef = false; ui.mqText(t._et, x.n); }
+        if (!x.s || t._st) return;
+        var url = N.tmdb.img(x.s, 'w300'), st = el('div', 'st'), im = new Image(); t._st = st;
+        im.onload = function () { st.style.backgroundImage = 'url("' + url + '")'; t.insertBefore(st, t.firstChild); void st.offsetWidth; t.classList.add('has-st'); };
+        im.src = url;
+      });
+    });
   };
   ui.skelCard = function (kind) { var c = el('div', 'card skel k-' + (kind || 'p')); return c; };
 
