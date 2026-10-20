@@ -96,3 +96,37 @@ install-wizard.sh  guided TV setup
 ## License
 
 Released under the [MIT License](LICENSE). The Vazirmatn font in `tizen-app/fonts/` is licensed under the SIL Open Font License (see `tizen-app/fonts/OFL.txt`).
+
+## 2022 TV browser compatibility and local checks
+
+The 2022 Samsung TV browser uses Chromium 85 (Tizen 6.5). Keep physical CSS
+positioning and explicit RTL overrides: `inset` and logical positioning/spacing
+shorthands require Chromium 87 and make the existing layout collapse on these TVs.
+The bundled launcher/sidebar artwork uses the original
+[30nama icon](https://30nama.com/android-chrome-512x512.png).
+
+Offline UI regression checks use synthetic artwork and mocked APIs; no account
+or media access is required. With Playwright installed locally:
+
+```sh
+npm install --no-save playwright
+CHROME_PATH=/path/to/chrome node tests/tv-ui.cjs
+COMPAT85=1 CHROME_PATH=/path/to/chrome node tests/tv-ui.cjs
+BASELINE=1 COMPAT85=1 CHROME_PATH=/path/to/chrome node tests/tv-ui.cjs
+```
+
+The first command uses the selected browser's real rendering. The second
+discards declarations unsupported by Chromium 85; it is a CSS simulation,
+not a Tizen emulator. The baseline run uses the pinned upstream revision and
+is expected to fail the geometry checks under that simulation. Tests cover
+1920×1080 English/Persian layouts, keyboard and grid navigation, scroll safe
+areas, focus restoration, pagination, modals, seasons and mocked AVPlay controls.
+Reports and screenshots are written to ignored `test-results/`; `ARTIFACT_DIR`
+can override that output directory. Hardware decoding and real streams still
+require a physical TV and a valid account.
+
+`build.sh` supports Unix SDK paths as well as Windows Git Bash. Set `TIZEN_HOME`
+or `TIZEN_CLI` if needed; installation only happens when a target is explicitly
+supplied. `python3 scripts/package-unsigned.py output.wgt` creates an unsigned
+widget without test tools or personal TMDB tokens. Sign it with a valid
+development certificate before installing.
