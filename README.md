@@ -52,22 +52,18 @@ Requires [Tizen Studio](https://developer.tizen.org/development/tizen-studio/dow
 ./build.sh <security-profile> [<tv-ip>:26101]    # manual build; with a target it also installs and launches
 ```
 
-## Optional: TMDB setup (build-from-source only)
+## Optional: TMDB setup
 
-This repo uses TMDB to add trending rows, cast, reviews and recommendations. It is off by default and the app works fully without it.
+TMDB adds trending rows, cast, reviews and recommendations. It is off by default and the app works fully without it. You can turn it on from the app itself, with any install method (TizenBrew, `.wgt` or built from source):
 
-**Build-from-source only.** The token is baked in at build time, so this only applies when you [build from source](#option-3-build-from-source). The TizenBrew module and the prebuilt `.wgt` never include a token, so TMDB stays off there.
+1. Create a free account at themoviedb.org and open Settings, API. Copy your **API Key** (32 characters) or the longer **API Read Access Token**.
+2. On the TV open **Settings > TMDB metadata**. The page also shows a QR code that opens your TMDB API settings on your phone.
+3. Enter the key and choose **Check and save**. The 32-character API Key is easy to type with the on-screen keyboard; for the long Read Access Token use **Keyboard** or paste it.
+4. The app checks the key with TMDB and shows **Connected** with the last characters of the key. Home and Details then show the extra content. Use **Remove key** to turn it off again, or **Clear metadata cache** to refresh the data.
 
-1. Create a free account at themoviedb.org and copy your **API Read Access Token** (v4) from Settings, API.
-2. Copy the example file:
-   ```
-   cp tizen-app/js/tmdb-token.example.js tizen-app/js/tmdb-token.js
-   ```
-3. Open `tizen-app/js/tmdb-token.js` and paste the token between the quotes:
-   ```js
-   N.config.tmdbToken = 'eyJhbGciOi...';
-   ```
-4. Rebuild and reinstall. The Home screen then shows the extra rows, and Details gains cast, reviews and recommendations.
+The key is stored only on your TV.
+
+**Build-from-source alternative.** To bake a token into your own build instead, copy `tizen-app/js/tmdb-token.example.js` to `tizen-app/js/tmdb-token.js`, paste the token between the quotes (`N.config.tmdbToken = '...';`) and rebuild. A key set in Settings overrides it. Never commit this file or share a build that contains it.
 
 ## Development
 
