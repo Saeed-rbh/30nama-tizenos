@@ -67,7 +67,7 @@ jobs:
           # Latest released version = highest v* tag; fall back to config.xml for a first release.
           LAST="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
           LAST="${LAST#v}"
-          [[ -n "$LAST" ]] || LAST="$(grep -oP '<widget [^>]*version="\K[^"]+' tizen-app/config.xml)"
+          [[ -n "$LAST" ]] || LAST="$(perl -0ne 'print $1 if /<widget\b[^>]*?\bversion="([^"]+)"/' tizen-app/config.xml)"
           IFS=. read -r MA MI PA <<<"$LAST"
           case "${{ steps.kind.outputs.kind }}" in
             major) MA=$((MA+1)); MI=0; PA=0 ;;
@@ -77,9 +77,10 @@ jobs:
           NEW="$MA.$MI.$PA"
           echo "$LAST -> $NEW"
 
-          sed -i -E "s/(<widget [^>]*version=\")[^\"]*(\")/\1${NEW}\2/" tizen-app/config.xml
+          # the <widget> tag spans several lines, so edit it in slurp mode
+          perl -0pi -e "s/(<widget\b[^>]*?\bversion=\")[^\"]*(\")/\${1}${NEW}\$2/" tizen-app/config.xml
           sed -i -E "0,/\"version\": *\"[^\"]*\"/s//\"version\": \"${NEW}\"/" package.json
-          grep -o '<widget [^>]*version="[^"]*"' tizen-app/config.xml | grep -q "version=\"$NEW\""
+          perl -0ne 'exit(/<widget\b[^>]*?\bversion="'"$NEW"'"/ ? 0 : 1)' tizen-app/config.xml
           grep -q "\"version\": \"$NEW\"" package.json
 
           git config user.name "github-actions[bot]"
