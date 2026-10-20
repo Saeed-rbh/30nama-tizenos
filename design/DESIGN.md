@@ -28,15 +28,17 @@ Everything else stays restrained. There is no parallax, no bouncy springs, no gl
 - Location: `tizen-app/fonts/`. Load with `@font-face { font-display: block; }`. They are local files, so the block period is only milliseconds. The splash covers it.
 
 ```css
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Regular.woff2) format("woff2");font-weight:400;font-display:block}
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Medium.woff2) format("woff2");font-weight:500;font-display:block}
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Bold.woff2) format("woff2");font-weight:700;font-display:block}
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-ExtraBold.woff2) format("woff2");font-weight:800;font-display:block}
-@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Regular.woff2) format("woff2");font-weight:400 600;font-display:block}
-@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Bold.woff2) format("woff2");font-weight:700 800;font-display:block}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Regular.woff2) format("woff2");font-weight:400;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Medium.woff2) format("woff2");font-weight:500;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Bold.woff2) format("woff2");font-weight:700;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-ExtraBold.woff2) format("woff2");font-weight:800;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Regular.woff2) format("woff2");font-weight:400 600;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Bold.woff2) format("woff2");font-weight:700 800;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
 html{font-family:"Vz",sans-serif}
 html[lang=fa]{font-family:"VzFD","Vz",sans-serif}
 ```
+
+The bundled font files use matching 112% ascent and 43% descent metrics. This keeps the correction effective on Tizen Chromium, which does not support the `@font-face` metric-override descriptors.
 
 Rules:
 - **Never set letter-spacing on Persian text.** Tracking breaks Arabic-script joining. Latin-only eyebrows may use `.04em`.
@@ -232,7 +234,7 @@ Text content changes inside the player OSD (time), list contents, settings value
 **Collapsed (default, content focused):**
 - The rail is 120px wide at the start edge, full height, with a static background `linear-gradient(to right, rgba(7,8,11,.8), rgba(7,8,11,0))` (mirrored in RTL).
 - At the top (y=54) is the brand monogram "30" in Vz 800, 40px, accent.
-- Icons are inline SVG, 40px, with a 2.5px stroke and `currentColor`. They are stacked and centered vertically, with a 72px pitch. The order is: **Search, Home, Movies, Series, Anime, Archive, Settings**. The **Account** avatar sits at the bottom (y = 1080-54-56). Movies, Series and Anime route to archive with the slug.
+- Icons are inline SVG, 40px, with a 2.5px stroke and `currentColor`. They are stacked and centered vertically, with a 72px pitch. The order is: **Search, Home, My list, Movies, Series, Anime, Archive, Settings**. My list has Watchlist and Favorites tabs. Account details live in Settings, not the rail. Movies, Series and Anime route to archive with the slug.
 - Icon colors are text-3. The current page's icon is text-1, with a 4x28px accent bar at the start edge (x=0).
 
 **Expanded (focus enters the rail):**
@@ -324,7 +326,7 @@ y 1036 │  next row header peeks (scroll affordance)
   - Other-language title `--t-body-l` text-2.
   - Meta line, the same as the billboard, but with all scores and up to 3 genres.
   - Plot `--t-body-l` text-2, 4-line clamp (`-webkit-line-clamp`, supported).
-  - Buttons (y≈ 700): **Play** or **Resume S2·E5** (primary), **Episodes** (series only), **Trailer** (only if a field exists, otherwise omit).
+  - Buttons (y≈ 700): **Play** or **Resume S2·E5** (primary), **Episodes** (series only), **Trailer** (only if a field exists, otherwise omit), followed by icon-only Watchlist (eye) and Favorite (heart) toggles for signed-in users. Filled icons indicate membership; their labels appear while focused.
   - Cast: one line of text-3 `--t-cap`, "Cast: A, B, C…" (not focusable).
 - **Back** goes to the previous screen and restores focus. The stage stays (no crossfade), so the return is instant and seamless.
 
@@ -332,6 +334,7 @@ y 1036 │  next row header peeks (scroll affordance)
 - **Episodes** (or Down from the buttons) raises a **sheet** from the bottom: 1920x600 at y=480, background `linear-gradient(to top, #07080b 70%, rgba(7,8,11,0))`, `translateY(100%)→0`, 420ms emph. At the same time the details column moves `translateY(-140px)` and its plot fades to 0, so the title and meta stay visible above the sheet.
 - **Season tabs:** a row of pills at y=540, height 56, padding-inline 28, `--t-body` 600. The current season is text-1 with a 3px accent underline bar inside the pill. Others are text-2. Focus uses the white fill. Moving focus across tabs **switches the season immediately**. The episode track crossfades (opacity 160ms out, 220ms in) without needing OK.
 - **Episode tiles** (there are no episode stills in the API, so the tiles are typographic): 360x200, `--surface`, radius `--r-tile`, in a horizontal start-anchored track at y=640, gap 24.
+  - With TMDB on, the episode still (w300) fades in (240ms) as the tile background under a dark top/bottom gradient. The number shrinks to 36px text-1, text stays light on focus (no white fill; the ring and scale mark focus). When the API has no episode title, the TMDB title (Persian if translated, else English; generic "Episode N" names ignored) replaces the "Episode N" fallback.
   - The episode number "E05" (Vz 800, 64px, text-3) sits top-start.
   - The episode title (`--t-body` 600, 2-line clamp) sits bottom-start.
   - Duration (`--t-cap` text-2) sits top-end.
@@ -369,13 +372,14 @@ y 1036 │  next row header peeks (scroll affordance)
 - `.stage-dim` .72 for both pages.
 
 ### 9.8 Settings
-- **Two panes.** The start list (width 520) holds sections: **Account**, **Language**, **Playback**, **Display**, **About**. The end pane (x=760, width 1000) shows the focused section's options. The pane content swaps as the list focus moves (fade 120/220ms).
+- **Two panes.** The start list (width 520) holds sections: **Account**, **Language**, **Playback**, **Display**, **TMDB metadata**, **About**. The end pane (x=760, width 1000) shows the focused section's options. The pane content swaps as the list focus moves (fade 120/220ms).
 - List rows: height 80, `--t-body-l`. The current section is text-1 with an accent bar; focus uses the white fill.
 - **Option rows:** 1000x88, `--surface`, radius `--r-tile`. The label is at the start and the current value is at the end in text-2 with a "‹ ›" hint. Left/Right cycles values in place; OK does the same.
   - **Account:** name, subscription expiry, Sign out (danger text; it confirms with a sheet).
   - **Language:** English / فارسی. Switching re-renders with `dir`. The rail and stage stay mounted.
   - **Playback:** Default subtitles (Off / فارسی / English), Subtitle size (S/M/L = 38/46/54px), with a live sample line rendered on a dark strip. Also Autoplay next episode (On/Off).
   - **Display:** Reduce motion (adds `body.calm`, disables Ken Burns and auto-advance).
+  - **TMDB metadata:** a status row, then a key strip: 4 `--surface` tiles of 8 slots each that fill as the 32-character v3 API Key is typed (the next slot carries the blinking accent caret; a rejected key outlines the tiles in `--danger`; a saved key shows masked except its last 4). Below it is a 16-key hex pad (0–9, a–f, always LTR) with ⌫ / Clear / Keyboard (native IME for a long v4 token), and at the end a 196px white QR tile linking to themoviedb.org/settings/api. Actions: **Check and save** (verifies against TMDB `/authentication` before persisting to `localStorage.tmdbToken`), **Remove key** (confirms), **Clear metadata cache**. Remote number keys, USB keyboards and desktop paste also feed the strip.
   - **About:** version, a "Unofficial client" note, and the active API host.
 
 ### 9.9 Player overlay (OSD)

@@ -6,7 +6,7 @@
   nav.registerKeys = function () {
     try {
       if (window.tizen && tizen.tvinputdevice) {
-        ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'ColorF0Red', 'ColorF1Green'].forEach(function (n) {
+        ['MediaPlayPause', 'MediaPlay', 'MediaPause', 'MediaStop', 'MediaFastForward', 'MediaRewind', 'ColorF0Red', 'ColorF1Green', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'].forEach(function (n) {
           try { tizen.tvinputdevice.registerKey(n); } catch (e) {}
         });
       }
@@ -46,6 +46,7 @@
     else if (document.activeElement && document.activeElement.tagName === 'INPUT') { document.activeElement.blur(); }
     if (!noScroll) nav.ensureVisible(el);
     if (nav.onFocusChange) nav.onFocusChange(el);
+    if (el._mq) N.ui.mqFit(el._mq);
     if (el.onfocus2) el.onfocus2(el);
   };
   nav.focusFirst = function (container) {

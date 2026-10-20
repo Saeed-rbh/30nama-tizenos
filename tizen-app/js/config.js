@@ -12,7 +12,7 @@ N.config = {
   // WEBTV key verified live (platform "WebTV"); ANDROIDTV key kept as fallback.
   apiKeys: ['83hRzBabjDnuv9SmV2GFaftpxjhZSHXYe7UnBuX5DdANdpzPvXu46jvKZHPb97As', 'VdapnkLG9EHsSmF8yeKcb4253RAuN6YX'],
   version: '1.0.0',
-  // TMDB v4 "API Read Access Token" (Bearer). Keep empty here; js/tmdb-token.js or localStorage 'tmdbToken' overrides. Empty = TMDB features off.
+  // TMDB v4 "API Read Access Token" (Bearer) or v3 API Key. Keep empty here; js/tmdb-token.js or localStorage 'tmdbToken' (set from Settings) overrides. Empty = TMDB features off.
   tmdbToken: '',
   qrBase: 'https://30nama.com/auth/',
   qrPollMs: 5000,

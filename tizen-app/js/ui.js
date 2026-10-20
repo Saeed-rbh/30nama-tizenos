@@ -36,7 +36,7 @@
     if (c._on || !c._src) return; c._on = true;
     var im = c._im; if (!im) return;
     im.onload = function () { im.classList.add('in'); };
-    im.onerror = function () { if (im.parentNode) im.parentNode.removeChild(im); c._im = null; };
+    im.onerror = function () { if (im.parentNode) im.parentNode.removeChild(im); c._im = null; if (!c._mq) c._mq = c._pt; };
     im.src = c._src;
   };
   ui.unload = function (c) {
@@ -58,10 +58,13 @@
       holder = el('div', 'pbox'); c.appendChild(holder);
       if (o.rank >= 10) c.classList.add('wide');
     }
-    var ph = el('div', 'ph'); ph.appendChild(el('span', '', kind === 'tile' ? '' : N.title(post))); holder.appendChild(ph);
+    // the placeholder title only scrolls when no poster covers it
+    var ph = el('div', 'ph'); c._pt = ui.mq(kind === 'tile' ? '' : N.title(post), 'pht mqv'); ph.appendChild(c._pt); holder.appendChild(ph);
     if (url) { var im = el('img', 'im'); im.alt = ''; im.decoding = 'async'; holder.appendChild(im); c._im = im; }
+    else c._mq = c._pt;
     if (kind === 'tile') {
-      c.appendChild(el('div', 'shade')); c.appendChild(el('div', 'tn', o.name)); c.appendChild(el('div', 'tc tab', o.count !== undefined ? String(o.count) : ''));
+      c._mq = ui.mq(o.name, 'tn');
+      c.appendChild(el('div', 'shade')); c.appendChild(c._mq); c.appendChild(el('div', 'tc tab', o.count !== undefined ? String(o.count) : ''));
     } else if (kind !== 'land') {
       ui.badge(holder, po);
     }
@@ -76,9 +79,10 @@
   // grid cell: poster + title under it. Returns the cell; cell.card is the focusable.
   ui.cell = function (post) {
     var cell = el('div', 'gcell'), c = ui.card(post, 'grid');
-    cell.appendChild(c); cell.appendChild(el('div', 'gt', N.title(post))); cell.card = c; c._cell = cell; return cell;
+    c._mq = ui.mq(N.title(post), 'gt');
+    cell.appendChild(c); cell.appendChild(c._mq); cell.card = c; c._cell = cell; return cell;
   };
-  // episode tiles (typographic; the API has no stills)
+  // episode tiles (typographic; the API has no stills, TMDB stills/titles are layered in by epTmdb)
   ui.epName = function (it) {
     var i = (it && it.info) || {}, t = i.title || i.name || (it && it.title);
     if (t && typeof t === 'object') t = (N.lang === 'fa' && t.local) ? t.local : (t.english || t.local);
@@ -96,15 +100,63 @@
   };
   ui.epTile = function (it, idx, o) {
     o = o || {}; var i = it.info || {}, n = ui.epLabel(i.episode, idx + 1), e = el('div', 'ep f');
+    e._en = ui.epNum(i.episode) || idx + 1;
     e.appendChild(el('div', 'en tab' + (n.length > 3 ? ' sm' : ''), 'E' + (/^\d$/.test(n) ? '0' + n : n)));
-    e.appendChild(el('div', 'et', ui.epName(it) || (N.t('episode') + ' ' + n)));
+    var nm = ui.epName(it), et = ui.mq(nm || (N.t('episode') + ' ' + n), 'et mqv');
+    e.appendChild(et); e._et = e._mq = et; e._etDef = !nm;
     var dur = Number(i.duration || i.time || 0);
     if (o.watched) { var ck = ui.icon('check', 'chk'); e.appendChild(ck); }
     else if (dur) { if (dur > 600) dur = dur / 60; e.appendChild(el('div', 'ed tab', Math.round(dur) + ' ' + N.t('min'))); }
     if (o.progress > 0) { var pb = el('div', 'ep-p'), pi = el('i'); pi.style.transform = 'scaleX(' + Math.min(1, o.progress) + ')'; pb.appendChild(pi); e.appendChild(pb); }
     return e;
   };
+  // TMDB extras for epTile elements of one season of `post`: the still as background, the title where 30nama has none
+  ui.epTmdb = function (post, season, tiles) {
+    if (!N.tmdb.enabled() || !tiles.length) return;
+    N.tmdb.episodes(post, season).then(function (m) {
+      tiles.forEach(function (t) {
+        var x = m[t._en]; if (!x || !t.parentNode) return;
+        if (x.n && t._etDef) { t._etDef = false; ui.mqText(t._et, x.n); }
+        if (!x.s || t._st) return;
+        var url = N.tmdb.img(x.s, 'w300'), st = el('div', 'st'), im = new Image(); t._st = st;
+        im.onload = function () { st.style.backgroundImage = 'url("' + url + '")'; t.insertBefore(st, t.firstChild); void st.offsetWidth; t.classList.add('has-st'); };
+        im.src = url;
+      });
+    });
+  };
   ui.skelCard = function (kind) { var c = el('div', 'card skel k-' + (kind || 'p')); return c; };
+
+  /* ---------- marquee: one-line text that scrolls while its card has focus ---------- */
+  ui.mq = function (text, cls) {
+    var b = el('div', (cls ? cls + ' ' : '') + 'mq'); b.dir = 'auto';
+    b.appendChild(el('span', '', text)); return b;
+  };
+  // measured lazily on first focus (needs layout + loaded fonts); cached on the element. `b` may be a list.
+  ui.mqFit = function (b) {
+    if (b && b.length) { for (var i = 0; i < b.length; i++) ui.mqFit(b[i]); return; }
+    if (!b || b._mq !== undefined || !b.clientWidth) return;
+    // .mqv: line-clamped text scrolls vertically, line by line
+    if (b.classList.contains('mqv')) {
+      var lh = parseFloat(getComputedStyle(b).lineHeight) || 1, extra = Math.round(b.scrollHeight / lh) - Math.round(b.clientHeight / lh);
+      b._mq = extra > 0; if (!b._mq) return;
+      b.style.setProperty('--mq-y', -(extra * lh) + 'px');
+      b.style.setProperty('--mq-h', b.clientHeight + 'px');
+      b.style.setProperty('--mq-t', (3 + extra * 1.2).toFixed(2) + 's');
+      b.classList.add('mqv-on'); return;
+    }
+    var s = b.firstChild, w = s.offsetWidth, gap = 48, d = w + gap;
+    b._mq = w > b.clientWidth + 1; if (!b._mq) return;
+    var rtl = getComputedStyle(b).direction === 'rtl', move = d / 50;
+    s.appendChild(el('span', 'mq-c', s.firstChild.nodeValue));
+    b.style.setProperty('--mq-x', (rtl ? d : -d) + 'px');
+    b.style.setProperty('--mq-t', (move / 0.88).toFixed(2) + 's');
+    b.classList.add('mq-on'); if (rtl) b.classList.add('mq-rtl');
+  };
+  ui.mqText = function (b, text) {
+    b.innerHTML = ''; b.appendChild(el('span', '', text));
+    b._mq = undefined; b.classList.remove('mq-on', 'mq-rtl', 'mqv-on');
+    if (N.nav.cur && N.nav.cur.contains(b)) ui.mqFit(b);
+  };
 
   /* ---------- text bits ---------- */
   ui.typeLabel = function (post, withSeasons) {
@@ -119,11 +171,15 @@
     if (N.lang === 'fa') return (h ? h + ' ساعت ' : '') + (m ? m + ' دقیقه' : '');
     return (h ? h + 'h ' : '') + (m ? m + 'm' : '');
   };
-  // Meta line: [IMDb 7.8] 30nama-score · year · duration · [age] · genres
-  ui.meta = function (post, nGenres) {
+  // Meta line: [IMDb 7.8] ([RT 86%] [Metacritic 74] if allScores) 30nama-score · year · duration · [age] · genres
+  ui.meta = function (post, nGenres, allScores) {
     var m = el('div', 'meta'), pi = post.info || {}, sc = post.score || {}, bits = 0;
     function dot() { if (m.lastChild) m.appendChild(el('i', 'dot-s')); }
     if (sc.imdb && sc.imdb.score) { m.appendChild(el('span', 'imdb tab', 'IMDb ' + sc.imdb.score)); }
+    if (allScores && sc.rottentomatoes && sc.rottentomatoes.score) {
+      var rt = el('span', 'crit rt tab'); rt.appendChild(ui.icon('tomato')); rt.appendChild(document.createTextNode(sc.rottentomatoes.score + '%')); m.appendChild(rt);
+    }
+    if (allScores && sc.metacritic && sc.metacritic.score) { m.appendChild(el('span', 'crit tab', 'Metacritic ' + sc.metacritic.score)); }
     if (sc['30nama'] && sc['30nama'].score) { var s3 = el('span', 'sc tab', String(sc['30nama'].score)); m.appendChild(s3); }
     if (pi.year) { dot(); m.appendChild(el('span', 'tab', pi.year + (pi.year_end && pi.year_end !== pi.year && (post.options || {}).is_series ? '–' + pi.year_end : ''))); }
     var d = ui.duration(pi.time && pi.time.default); if (d) { dot(); m.appendChild(el('span', 'tab', d)); }

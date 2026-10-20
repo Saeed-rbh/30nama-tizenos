@@ -5,11 +5,15 @@
   var T = N.tmdb = {};
   var API = 'https://api.themoviedb.org/3', IMG = 'https://image.tmdb.org/t/p/';
   var HR = 3600 * 1000;
-  var TTL = { details: 168 * HR, trend: 6 * HR, match: 168 * HR, miss: 24 * HR, res: 168 * HR };
+  var TTL = { details: 168 * HR, trend: 6 * HR, match: 168 * HR, miss: 24 * HR, res: 168 * HR, season: 24 * HR };
   var PFX = 'tc.';
 
   function lsRaw(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   T.token = function () { return String(lsRaw('tmdbToken') || N.config.tmdbToken || '').replace(/^\s+|\s+$/g, ''); };
+  // v3 "API Key" (32 hex, sent as ?api_key=) or v4 "Read Access Token" (JWT, sent as Bearer)
+  T.isKey = function (t) { return /^[0-9a-f]{32}$/i.test(t || ''); };
+  T.source = function () { return T.mock() ? 'mock' : lsRaw('tmdbToken') ? 'stored' : N.config.tmdbToken ? 'bundled' : ''; };
+  T.setToken = function (t) { try { if (t) localStorage.setItem('tmdbToken', t); else localStorage.removeItem('tmdbToken'); } catch (e) {} };
   T.mock = function () { return lsRaw('tmdbMock') === '1'; };
   T.enabled = function () { return T.mock() || !!T.token(); };
   T.img = function (path, size) { return path ? IMG + (size || 'w500') + path : ''; };
@@ -73,6 +77,7 @@
     if ((m = /^\/search\/(movie|tv)/.exec(path))) return 'search_' + m[1];
     if (/^\/find\//.test(path)) return 'find';
     if (/^\/(movie|tv)\/\d+\/images/.test(path)) return 'images';
+    if (/^\/tv\/\d+\/season\//.test(path)) return 'empty';
     if ((m = /^\/(movie|tv)\/\d+/.exec(path))) return 'details_' + m[1];
     return 'empty';
   }
@@ -80,10 +85,22 @@
     if (T.mock()) {
       return timeout(fetch('tools/fixtures/' + mockFile(path) + '.json').then(function (r) { if (!r.ok) throw new Error('fixture ' + r.status); return r.json(); }), 8000);
     }
-    var q = qs(params);
-    return timeout(fetch(API + path + (q ? '?' + q : ''), { headers: { Authorization: 'Bearer ' + T.token(), Accept: 'application/json' } })
+    return timeout(authFetch(path, params, T.token())
       .then(function (r) { if (!r.ok) throw new Error('tmdb ' + r.status); return r.json(); }), 15000);
   }
+  function authFetch(path, params, tok) {
+    var q = qs(params), h = { Accept: 'application/json' };
+    if (T.isKey(tok)) q += (q ? '&' : '') + 'api_key=' + tok; else h.Authorization = 'Bearer ' + tok;
+    return fetch(API + path + (q ? '?' + q : ''), { headers: h });
+  }
+  // resolves true/false (TMDB accepted / rejected the credential); rejects on network failure
+  T.verify = function (tok) {
+    return timeout(authFetch('/authentication', null, tok).then(function (r) {
+      if (r.status === 401 || r.status === 403) return false;
+      if (!r.ok) throw new Error('tmdb ' + r.status);
+      return true;
+    }), 12000);
+  };
   var inflight = {};
   // o: {ttl, slim(json)} ; the slimmed value is what is cached and returned
   T.get = function (path, params, o) {
@@ -230,6 +247,26 @@
   T.logoFor = function (tm) {
     return T.get('/' + tm.kind + '/' + tm.id + '/images', { include_image_language: 'en,null' }, { ttl: TTL.details, slim: function (j) { return pickLogo(j.logos); } })
       .then(function (p) { return p ? IMG + 'w500' + p : ''; }).catch(function () { return ''; });
+  };
+  // TMDB fills untitled episodes with "Episode 3" / "قسمت ۳": treat those as no title
+  function epTitle(n) { n = String(n || '').replace(/^\s+|\s+$/g, ''); return /^(episode|قسمت|اپیزود)\s*[0-9۰-۹]+$/i.test(n) ? '' : n; }
+  // {episode number: {s: still path, n: title}} for one season of a series post (fa titles when available); {} when off/unmatched; never rejects
+  T.episodes = function (post, season) {
+    if (!T.enabled() || !isTv(post)) return Promise.resolve({});
+    return T.match(post).then(function (m) {
+      if (!m || m.kind !== 'tv') return {};
+      function get(lang) {
+        return T.get('/tv/' + m.id + '/season/' + season, { language: lang }, { ttl: TTL.season, slim: function (j) {
+          var o = {}; (j.episodes || []).forEach(function (e) { if (e.episode_number) o[e.episode_number] = { s: e.still_path || '', n: epTitle(e.name) }; }); return o;
+        } });
+      }
+      var loc = N.lang === 'fa' ? get('fa-IR').catch(function () { return {}; }) : Promise.resolve({});
+      return Promise.all([get('en-US'), loc]).then(function (r) {
+        var out = {};
+        Object.keys(r[0]).forEach(function (k) { var l = r[1][k]; out[k] = { s: r[0][k].s, n: (l && l.n) || r[0][k].n }; });
+        return out;
+      });
+    }).catch(function () { return {}; });
   };
 
   /* ---------- TMDB item -> 30nama post ---------- */
