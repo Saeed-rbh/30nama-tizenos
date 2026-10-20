@@ -87,7 +87,7 @@ tizen-app/    the Tizen web app (config.xml, index.html, js/, css/, fonts/, tool
 design/       design spec
 docs/        README screenshots, TizenBrew notes
 package.json TizenBrew module manifest
-.github/     release workflow (experimental, manual run)
+.github/     release workflow (auto-releases on merge to main)
 media/        poster
 build.sh      build, sign and install
 install-wizard.sh  guided TV setup

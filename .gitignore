@@ -25,3 +25,6 @@ tools-video/*.log
 # large media / screenshots (selected ones live in docs/images)
 media/*.mp4
 design/shots/
+
+# local tooling
+.claude/
