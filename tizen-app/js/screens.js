@@ -434,7 +434,7 @@
       if (tmOn) { titleEl.textContent = ''; titleEl.appendChild(el('span', 'tt', N.title(post))); }
       var o = other(post); if (o) col.appendChild(el('div', 'd-alt', o));
       var tagEl = null; if (tmOn) { tagEl = el('div', 'd-tag'); tagEl.dir = 'auto'; col.appendChild(tagEl); }
-      var meta = ui.meta(post, 3); meta.classList.add('d-meta'); col.appendChild(meta);
+      var meta = ui.meta(post, 3, true); meta.classList.add('d-meta'); col.appendChild(meta);
       var plot = el('div', 'd-plot d-fade', N.plot(post)); col.appendChild(plot);
       var btns = el('div', 'd-btns d-fade'); col.appendChild(btns);
       var castEl = null;

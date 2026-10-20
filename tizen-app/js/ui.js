@@ -119,11 +119,15 @@
     if (N.lang === 'fa') return (h ? h + ' ساعت ' : '') + (m ? m + ' دقیقه' : '');
     return (h ? h + 'h ' : '') + (m ? m + 'm' : '');
   };
-  // Meta line: [IMDb 7.8] 30nama-score · year · duration · [age] · genres
-  ui.meta = function (post, nGenres) {
+  // Meta line: [IMDb 7.8] ([RT 86%] [Metacritic 74] if allScores) 30nama-score · year · duration · [age] · genres
+  ui.meta = function (post, nGenres, allScores) {
     var m = el('div', 'meta'), pi = post.info || {}, sc = post.score || {}, bits = 0;
     function dot() { if (m.lastChild) m.appendChild(el('i', 'dot-s')); }
     if (sc.imdb && sc.imdb.score) { m.appendChild(el('span', 'imdb tab', 'IMDb ' + sc.imdb.score)); }
+    if (allScores && sc.rottentomatoes && sc.rottentomatoes.score) {
+      var rt = el('span', 'crit rt tab'); rt.appendChild(ui.icon('tomato')); rt.appendChild(document.createTextNode(sc.rottentomatoes.score + '%')); m.appendChild(rt);
+    }
+    if (allScores && sc.metacritic && sc.metacritic.score) { m.appendChild(el('span', 'crit tab', 'Metacritic ' + sc.metacritic.score)); }
     if (sc['30nama'] && sc['30nama'].score) { var s3 = el('span', 'sc tab', String(sc['30nama'].score)); m.appendChild(s3); }
     if (pi.year) { dot(); m.appendChild(el('span', 'tab', pi.year + (pi.year_end && pi.year_end !== pi.year && (post.options || {}).is_series ? '–' + pi.year_end : ''))); }
     var d = ui.duration(pi.time && pi.time.default); if (d) { dot(); m.appendChild(el('span', 'tab', d)); }
