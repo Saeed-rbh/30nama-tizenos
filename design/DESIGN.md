@@ -28,15 +28,17 @@ Everything else stays restrained. There is no parallax, no bouncy springs, no gl
 - Location: `tizen-app/fonts/`. Load with `@font-face { font-display: block; }`. They are local files, so the block period is only milliseconds. The splash covers it.
 
 ```css
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Regular.woff2) format("woff2");font-weight:400;font-display:block}
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Medium.woff2) format("woff2");font-weight:500;font-display:block}
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Bold.woff2) format("woff2");font-weight:700;font-display:block}
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-ExtraBold.woff2) format("woff2");font-weight:800;font-display:block}
-@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Regular.woff2) format("woff2");font-weight:400 600;font-display:block}
-@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Bold.woff2) format("woff2");font-weight:700 800;font-display:block}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Regular.woff2) format("woff2");font-weight:400;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Medium.woff2) format("woff2");font-weight:500;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Bold.woff2) format("woff2");font-weight:700;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-ExtraBold.woff2) format("woff2");font-weight:800;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Regular.woff2) format("woff2");font-weight:400 600;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Bold.woff2) format("woff2");font-weight:700 800;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
 html{font-family:"Vz",sans-serif}
 html[lang=fa]{font-family:"VzFD","Vz",sans-serif}
 ```
+
+The bundled font files use matching 112% ascent and 43% descent metrics. This keeps the correction effective on Tizen Chromium, which does not support the `@font-face` metric-override descriptors.
 
 Rules:
 - **Never set letter-spacing on Persian text.** Tracking breaks Arabic-script joining. Latin-only eyebrows may use `.04em`.

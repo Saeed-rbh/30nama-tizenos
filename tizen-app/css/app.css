@@ -1,13 +1,13 @@
 /* 30nama TV - "One Stage". Tizen Chromium M94: no nesting, :has, container queries, backdrop-filter.
    Only transform and opacity are transitioned/animated. */
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Regular.woff2) format("woff2");font-weight:400;font-display:block}
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Medium.woff2) format("woff2");font-weight:500 600;font-display:block}
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Bold.woff2) format("woff2");font-weight:700;font-display:block}
-@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-ExtraBold.woff2) format("woff2");font-weight:800;font-display:block}
-@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Regular.woff2) format("woff2");font-weight:400;font-display:block}
-@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Medium.woff2) format("woff2");font-weight:500 600;font-display:block}
-@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Bold.woff2) format("woff2");font-weight:700;font-display:block}
-@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-ExtraBold.woff2) format("woff2");font-weight:800;font-display:block}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Regular.woff2) format("woff2");font-weight:400;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Medium.woff2) format("woff2");font-weight:500 600;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-Bold.woff2) format("woff2");font-weight:700;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"Vz";src:url(../fonts/Vazirmatn-ExtraBold.woff2) format("woff2");font-weight:800;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Regular.woff2) format("woff2");font-weight:400;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Medium.woff2) format("woff2");font-weight:500 600;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-Bold.woff2) format("woff2");font-weight:700;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
+@font-face{font-family:"VzFD";src:url(../fonts/Vazirmatn-FD-ExtraBold.woff2) format("woff2");font-weight:800;font-display:block;ascent-override:112%;descent-override:43%;line-gap-override:0%}
 
 :root{
   --bg-0:#07080b;--bg-1:#0e1016;--surface:#161922;--surface-2:#20242f;
