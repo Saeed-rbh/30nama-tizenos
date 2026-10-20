@@ -45,11 +45,11 @@ Playback uses the TV's HTML5 player here (AVPlay is not available inside TizenBr
 
 First turn on Developer Mode on the TV: open Apps, type `12345`, switch Developer mode on, enter your PC's IP address, then reboot the TV.
 
-Requires [Tizen Studio](https://developer.tizen.org/development/tizen-studio/download) (CLI tools + TV extension), a Samsung certificate that includes your TV's DUID, and Git Bash (the scripts target Windows + Git Bash; `TIZEN_HOME` defaults to `/c/tizen-studio`).
+Requires [Tizen Studio](https://developer.tizen.org/development/tizen-studio/download) (CLI tools + TV extension), a Samsung certificate that includes your TV's DUID, and Bash. `build.sh` supports Unix SDK paths and Windows Git Bash; set `TIZEN_HOME` or `TIZEN_CLI` if needed. The guided install wizard requires Windows Git Bash.
 
 ```
 ./install-wizard.sh                              # guided: reads the DUID, creates certificate and profile
-./build.sh <security-profile> [<tv-ip>:26101]    # manual build; with a target it also installs and launches
+./build.sh <security-profile> [<tv-ip>:26101 | sdb-target-name] # manual build; with a target it also installs and launches
 ```
 
 ## Optional: TMDB setup (build-from-source only)
@@ -97,36 +97,10 @@ install-wizard.sh  guided TV setup
 
 Released under the [MIT License](LICENSE). The Vazirmatn font in `tizen-app/fonts/` is licensed under the SIL Open Font License (see `tizen-app/fonts/OFL.txt`).
 
-## 2022 TV browser compatibility and local checks
+## Compatibility
 
-The 2022 Samsung TV browser uses Chromium 85 (Tizen 6.5). Keep physical CSS
-positioning and explicit RTL overrides: `inset` and logical positioning/spacing
-shorthands require Chromium 87 and make the existing layout collapse on these TVs.
-The bundled launcher/sidebar artwork uses the original
-[30nama icon](https://30nama.com/android-chrome-512x512.png).
+| Samsung TV | Tizen | Chromium | Validation |
+|---|---|---|---|
+| 2022 | 6.5 | 85 | English/Persian UI regression checks; installed and launched on a physical TV |
 
-Offline UI regression checks use synthetic artwork and mocked APIs; no account
-or media access is required. With Playwright installed locally:
-
-```sh
-npm install --no-save playwright
-CHROME_PATH=/path/to/chrome node tests/tv-ui.cjs
-COMPAT85=1 CHROME_PATH=/path/to/chrome node tests/tv-ui.cjs
-BASELINE=1 COMPAT85=1 CHROME_PATH=/path/to/chrome node tests/tv-ui.cjs
-```
-
-The first command uses the selected browser's real rendering. The second
-discards declarations unsupported by Chromium 85; it is a CSS simulation,
-not a Tizen emulator. The baseline run uses the pinned upstream revision and
-is expected to fail the geometry checks under that simulation. Tests cover
-1920×1080 English/Persian layouts, keyboard and grid navigation, scroll safe
-areas, focus restoration, pagination, modals, seasons and mocked AVPlay controls.
-Reports and screenshots are written to ignored `test-results/`; `ARTIFACT_DIR`
-can override that output directory. Hardware decoding and real streams still
-require a physical TV and a valid account.
-
-`build.sh` supports Unix SDK paths as well as Windows Git Bash. Set `TIZEN_HOME`
-or `TIZEN_CLI` if needed; installation only happens when a target is explicitly
-supplied. `python3 scripts/package-unsigned.py output.wgt` creates an unsigned
-widget without test tools or personal TMDB tokens. Sign it with a valid
-development certificate before installing.
+Browser versions: [Samsung web-engine specifications](https://developer.samsung.com/smarttv/develop/specifications/web-engine-specifications.html).

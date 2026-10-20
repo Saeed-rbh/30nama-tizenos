@@ -144,7 +144,7 @@
       if (nav.cur && (!root().contains(nav.cur) || !visible(nav.cur) || nav.cur.disabled)) { nav.clear(); nav.focusFirst(); return; }
       if (nav.cur) { if (nav.cur.onenter) nav.cur.onenter(); else nav.cur.click(); }
     }
-    else if (k === 9) { e.preventDefault(); } // native Tab must not scroll the fixed TV canvas
+    else if (k === K.TAB) { e.preventDefault(); } // native Tab must not scroll the fixed TV canvas
   });
   // mouse support for desktop testing (only on real pointer movement, so content sliding under a still cursor never steals focus)
   document.addEventListener('mousemove', function (e) {

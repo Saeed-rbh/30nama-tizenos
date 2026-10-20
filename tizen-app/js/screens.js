@@ -699,6 +699,7 @@
 
     var res = el('div', 'results'), rh = el('div', 'rh'), rw = el('div', 'rgrid-w'), rg = el('div', 'rgrid');
     var viewport = el('div', 'rgrid-viewport'), resultCards = [], keyboardMem = null;
+    var RESULT_COLS = 5; // Must match .rgrid width / (.rgrid .gcell width + margin) in app.css.
     rw.appendChild(rg); viewport.appendChild(rw); res.appendChild(rh); res.appendChild(viewport); root.appendChild(res);
     rw.reveal = function (e) { ui.vscroll(rw, e._cell || e, 20); };
 
@@ -776,7 +777,7 @@
           cell.card.onclick = function () { N.go('details', { id: p.id }); };
           resultCards.push(cell.card);
           cell.card.onnav = function (dir) {
-            return ui.gridNav(resultCards, i, 5, dir, function (edge) {
+            return ui.gridNav(resultCards, i, RESULT_COLS, dir, function (edge) {
               if (edge === 'left' || edge === 'right') {
                 if (ui.step(edge) < 0) return keyboardMem && root.contains(keyboardMem) ? keyboardMem : grid.firstChild;
               }

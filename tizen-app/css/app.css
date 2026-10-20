@@ -387,14 +387,15 @@ html[dir=rtl] .results{left:auto;right:860px}
 .results .rh{position:absolute;top:90px;left:0;font-size:var(--t-m);font-weight:700;line-height:88px}
 html[dir=rtl] .results .rh{left:auto;right:0}
 .rgrid-w{position:absolute;top:0;left:0;width:980px;height:1080px;will-change:transform;transition:transform var(--d-page) var(--e-emph)}
-.rgrid{position:absolute;top:200px;left:6px;width:980px;display:flex;flex-wrap:wrap}
+/* Clip scrolling results below the heading, with room for the focus ring. */
+.rgrid-viewport{position:absolute;top:180px;left:0;width:980px;height:680px;overflow:hidden}
+.rgrid{position:absolute;top:20px;left:6px;width:980px;display:flex;flex-wrap:wrap}
 html[dir=rtl] .rgrid{left:auto;right:6px}
 .rgrid.sw{opacity:0;transition:opacity 120ms var(--e-out)}
-.rgrid .gcell{width:180px;height:344px;margin-right:16px;margin-bottom:0}
+.rgrid .gcell{width:180px;height:330px;margin-right:16px;margin-bottom:0}
 html[dir=rtl] .rgrid .gcell{margin-right:0;margin-left:16px}
 .rgrid .card{width:180px;height:270px}
 .rgrid .gcell .gt{top:284px}
-.rgrid .gcell{height:330px}
 .fadein{animation:fi 240ms var(--e-out) backwards}
 @keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .nores{position:absolute;top:210px;left:6px;font-size:var(--t-body-l);color:var(--text-2);line-height:1.6;max-width:880px}
@@ -651,8 +652,5 @@ html[dir=rtl] .rv-hint{margin-left:0;margin-right:28px}
 #rail.open .ri{width:320px}
 .key{flex:none}
 .search .kb-hint{top:930px}
-/* Clip scrolling results below the heading, with room for the focus ring. */
-.rgrid-viewport{position:absolute;top:180px;left:0;width:980px;height:680px;overflow:hidden}
-.rgrid{top:20px}
 .modal,.rv-sheet{visibility:hidden}
 .modal.show,.rv-sheet.show{visibility:visible}
