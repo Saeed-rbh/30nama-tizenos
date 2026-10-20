@@ -11,7 +11,6 @@
     ['archive', 'archive', function () { N.go('archive', {}, { reset: true }); }],
     ['settings', 'settings', function () { N.go('settings', {}, { reset: true }); }]
   ];
-  var ACCT = ['account', 'user', function () { N.go('settings', { section: 'account' }, { reset: true }); }];
 
   /* ---------------- home cache ---------------- */
   var hc = { t: 0, p: null };
@@ -43,17 +42,16 @@
 
   /* ---------------- rail ---------------- */
   var rail = N.rail = { items: [], open: false, mem: null, pill: null, root: null };
-  var Y0 = 288, PITCH = 72, ACCT_Y = 966;
-  function yOf(i) { return i < RAIL.length ? Y0 + i * PITCH : ACCT_Y; }
+  var Y0 = 288, PITCH = 72;
+  function yOf(i) { return Y0 + i * PITCH; }
   rail.build = function () {
     var r = rail.root = $('rail'); r.innerHTML = ''; rail.items = [];
     r.appendChild(el('div', 'rail-base')); r.appendChild(el('div', 'rail-scrim'));
     r.appendChild(el('div', 'rail-panel')); var br = el('div', 'rail-brand'); br.appendChild(N.ui.logo()); r.appendChild(br);
     rail.pill = el('div', 'rail-pill'); r.appendChild(rail.pill);
-    RAIL.concat([ACCT]).forEach(function (m, i) {
-      var b = el('button', 'ri' + (m[0] === 'account' ? ' acct' : '')); b._key = m[0]; b._y = yOf(i); b.style.top = b._y + 'px';
-      if (m[0] === 'account') { var av = el('div', 'av'); av.appendChild(N.ui.icon('user')); b.appendChild(av); }
-      else b.appendChild(N.ui.icon(m[1]));
+    RAIL.forEach(function (m, i) {
+      var b = el('button', 'ri'); b._key = m[0]; b._y = yOf(i); b.style.top = b._y + 'px';
+      b.appendChild(N.ui.icon(m[1]));
       var lb = el('span', 'lb', N.t(m[0])); lb.style.transitionDelay = (i * 20) + 'ms'; b.appendChild(lb);
       b.onenter = function () { rail.go(m); };
       b.onclick = function () { rail.go(m); };
@@ -73,7 +71,6 @@
     while (e && e.name === 'details' && i > 0) { i--; e = stack[i]; }
     if (!e) return '';
     if (e.name === 'archive' && e.params && (e.params.slug === 'movies' || e.params.slug === 'series' || e.params.slug === 'anime')) return e.params.slug;
-    if (e.name === 'settings' && e.params && e.params.section === 'account') return 'account';
     return e.name;
   };
   rail.mark = function () {

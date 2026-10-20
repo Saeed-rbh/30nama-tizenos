@@ -232,7 +232,7 @@ Text content changes inside the player OSD (time), list contents, settings value
 **Collapsed (default, content focused):**
 - The rail is 120px wide at the start edge, full height, with a static background `linear-gradient(to right, rgba(7,8,11,.8), rgba(7,8,11,0))` (mirrored in RTL).
 - At the top (y=54) is the brand monogram "30" in Vz 800, 40px, accent.
-- Icons are inline SVG, 40px, with a 2.5px stroke and `currentColor`. They are stacked and centered vertically, with a 72px pitch. The order is: **Search, Home, Movies, Series, Anime, Archive, Settings**. The **Account** avatar sits at the bottom (y = 1080-54-56). Movies, Series and Anime route to archive with the slug.
+- Icons are inline SVG, 40px, with a 2.5px stroke and `currentColor`. They are stacked and centered vertically, with a 72px pitch. The order is: **Search, Home, Movies, Series, Anime, Archive, Settings**. Account details live in Settings, not the rail. Movies, Series and Anime route to archive with the slug.
 - Icon colors are text-3. The current page's icon is text-1, with a 4x28px accent bar at the start edge (x=0).
 
 **Expanded (focus enters the rail):**

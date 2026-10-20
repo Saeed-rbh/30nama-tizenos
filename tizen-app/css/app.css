@@ -106,9 +106,6 @@ html[dir=rtl] .rail-panel{background:linear-gradient(to left,rgba(7,8,11,.97) 0,
 .ri.cur::before{content:"";position:absolute;inset-inline-start:0;top:18px;width:4px;height:28px;border-radius:2px;background:var(--accent)}
 #rail.open .ri.focus{color:var(--focus-ink)}
 #rail.open .ri.cur:not(.focus){color:var(--text-1)}
-.ri.acct .av{position:absolute;inset-inline-start:40px;top:12px;width:40px;height:40px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center}
-.ri.acct .av .ico{position:static;width:26px;height:26px}
-.ri.focus .av{background:rgba(0,0,0,.12)}
 
 /* ---------- buttons, pills, keys ---------- */
 .fl{position:relative;isolation:isolate}
