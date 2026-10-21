@@ -1,22 +1,108 @@
-name: Release wgt
+name: Release
 
-# EXPERIMENTAL, manual only (Actions > Release wgt > Run workflow): build tizen-app/ into a .wgt signed with a throwaway author
-# certificate generated on the runner, and attach it to a GitHub Release.
-# The package is meant to be RE-SIGNED by the user's installer
-# (e.g. Apps2Samsung) with their own Samsung certificate, so the throwaway
-# cert is discarded after the build. No TMDB token is ever included.
+# Opt-in: a merge to main only releases if the merged PR has a release label
+# (release:patch | release:minor | release:major). No label = no release.
+#   1. picks the bump from the merged PR's label
+#   2. bumps the version in tizen-app/config.xml and package.json, commits, tags vX.Y.Z
+#   3. builds the .wgt and publishes a GitHub Release with generated notes
+# Can also be run by hand (Actions > Release > Run workflow) to cut a release of a chosen size.
+#
+# The .wgt is signed with a throwaway author certificate generated on the runner and is meant to be
+# RE-SIGNED by the user's installer (e.g. Apps2Samsung). No TMDB token is ever included.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        type: choice
+        options: [patch, minor, major]
+        default: patch
 
 permissions:
   contents: write
+  pull-requests: read
+
+# One release at a time; never cancel a release that is half way through.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  wgt:
+  version:
+    # Skip the bot's own version commit so a release never triggers another release.
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
     runs-on: ubuntu-22.04
+    outputs:
+      released: ${{ steps.bump.outputs.released }}
+      version: ${{ steps.bump.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide bump type
+        id: kind
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "kind=${{ inputs.bump }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LABELS="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '.[].labels[].name' || true)"
+          echo "PR labels: ${LABELS:-<none>}"
+          if grep -qx 'release:major' <<<"$LABELS"; then kind=major
+          elif grep -qx 'release:minor' <<<"$LABELS"; then kind=minor
+          elif grep -qx 'release:patch' <<<"$LABELS"; then kind=patch
+          else kind=skip; fi
+          echo "kind=$kind" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version, commit and tag
+        id: bump
+        if: steps.kind.outputs.kind != 'skip'
+        run: |
+          # Latest released version = highest v* tag; fall back to config.xml for a first release.
+          LAST="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)"
+          LAST="${LAST#v}"
+          [[ -n "$LAST" ]] || LAST="$(perl -0ne 'print $1 if /<widget\b[^>]*?\bversion="([^"]+)"/' tizen-app/config.xml)"
+          IFS=. read -r MA MI PA <<<"$LAST"
+          case "${{ steps.kind.outputs.kind }}" in
+            major) MA=$((MA+1)); MI=0; PA=0 ;;
+            minor) MI=$((MI+1)); PA=0 ;;
+            *)     PA=$((PA+1)) ;;
+          esac
+          NEW="$MA.$MI.$PA"
+          echo "$LAST -> $NEW"
+
+          # the <widget> tag spans several lines, so edit it in slurp mode
+          perl -0pi -e "s/(<widget\b[^>]*?\bversion=\")[^\"]*(\")/\${1}${NEW}\$2/" tizen-app/config.xml
+          sed -i -E "0,/\"version\": *\"[^\"]*\"/s//\"version\": \"${NEW}\"/" package.json
+          perl -0ne 'exit(/<widget\b[^>]*?\bversion="'"$NEW"'"/ ? 0 : 1)' tizen-app/config.xml
+          grep -q "\"version\": \"$NEW\"" package.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tizen-app/config.xml package.json
+          git commit -m "chore(release): v${NEW} [skip ci]"
+          git tag -a "v${NEW}" -m "v${NEW}"
+          git push origin HEAD:main "v${NEW}"
+
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
+  wgt:
+    needs: version
+    if: needs.version.outputs.released == 'true'
+    runs-on: ubuntu-22.04
+    env:
+      TAG: v${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - uses: actions/setup-java@v4
         with:
@@ -36,10 +122,6 @@ jobs:
           mkdir -p stage/web
           cp -r tizen-app/. stage/web/
           rm -rf stage/web/tools stage/web/js/tmdb-token.js stage/web/js/dev-session.js
-          VER="${GITHUB_REF_NAME#v}"
-          if [[ "$GITHUB_REF_TYPE" == "tag" && "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            sed -i -E "s/(<widget [^>]*version=\")[^\"]*(\")/\1${VER}\2/" stage/web/config.xml
-          fi
           grep -o 'version="[^"]*"' stage/web/config.xml | head -1
 
       - name: Build and package with a throwaway author certificate
@@ -77,7 +159,7 @@ jobs:
           unzip -p "$WGT" 'js/*' config.xml index.html | grep -q 'eyJ' && { echo "JWT-like string in wgt"; exit 1; } || true
           unzip -l "$WGT" | grep -q author-signature.xml
           unzip -l "$WGT" | grep -q signature1.xml
-          mv "$WGT" "dist/30nama-${GITHUB_REF_NAME}.wgt"
+          mv "$WGT" "dist/30nama-${TAG}.wgt"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -85,9 +167,9 @@ jobs:
           path: dist/*.wgt
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
           files: dist/*.wgt
           generate_release_notes: true
           body: |

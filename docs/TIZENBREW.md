@@ -35,7 +35,7 @@ and [service index.js](https://github.com/reisxd/TizenBrew/blob/main/tizenbrew-a
 2. **`$WEBAPIS/webapis/webapis.js` does not resolve** on an http page (it is a platform placeholder for packaged apps). `webapis.avplay` is expected to be unavailable, and the player already falls back to `<video>` + hls.js (`player.js`, `hasAV()`). The TizenBrew widget does not declare an avplay privilege either. Verified locally: with that script 404 the app boots and `hasAV()` is false.
 3. **`tizen.tvinputdevice`**: TizenBrew's UI registers the `package.json` `keys` before navigating, and the app also calls `registerKey` itself (wrapped in try/catch).
 4. **Exit**: the Back-to-exit confirm calls `tizen.application.getCurrentApplication().exit()`, which closes TizenBrew itself. Acceptable.
-5. **TMDB**: `js/tmdb-token.js` is git-ignored, so it 404s via jsDelivr (harmless; TMDB stays off). A Settings text field for the token was not added: a 100+ character token is impractical to type with a TV remote. Power users can set the `tmdbToken` localStorage key through the web inspector.
+5. **TMDB**: `js/tmdb-token.js` is git-ignored, so it 404s via jsDelivr (harmless). Users enable TMDB from Settings > TMDB metadata, which validates the key and stores it in the `tmdbToken` localStorage key. The 32-character API Key is the practical choice with a remote; the long Read Access Token also works via the Keyboard option or paste.
 6. `index.html` uses relative paths only, so it works under the `/module/<id>/tizen-app/` prefix.
 
 ## Verification done / not done

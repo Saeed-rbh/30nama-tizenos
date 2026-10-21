@@ -416,7 +416,13 @@
         var sp = (wantStream || free) ? N.api.call('stream', { post_id: post.id, free_stream: wantStream ? 0 : 1 }).then(function (j) {
           return (j && j.success) ? j.result : null;
         }).catch(function () { return null; }) : Promise.resolve(null);
-        return sp.then(function (st) { if (!dead) render(post, st); });
+        var dp = N.player.dlMode() === 'off' ? Promise.resolve([]) : N.direct.fetch(post, wantStream);
+        return Promise.all([sp, dp]).then(function (r) {
+          if (dead) return;
+          var st = r[0];
+          try { if (st && st.hls && r[1].length) N.direct.attach(st.hls, r[1], !!(post.options && post.options.is_series)); } catch (e) {}
+          render(post, st);
+        });
       }).catch(function (e) { if (!dead) errorView(root, e, function () { root.innerHTML = ''; root.appendChild(sk); load(); }); });
     }
     function render(post, st) {
@@ -969,7 +975,7 @@
 
   /* ================= Settings ================= */
   S.settings = function (root, params, restore) {
-    var dead = false, sec = (restore && restore.sec) || (params && params.section) || 'account', swT = null, paneOff = null, secs = ['account', 'language', 'playback', 'display', 'tmdb', 'about'];
+    var dead = false, sec = (restore && restore.sec) || (params && params.section) || 'account', swT = null, paneOff = null, secs = ['account', 'language', 'playback', 'display', 'tmdb', 'takeover', 'about'];
     root.classList.add('set'); N.stage.dim(0.72);
     root.appendChild(el('div', 'h-xl t', N.t('settings')));
     var list = el('div', 'slist'), pane = el('div', 'spane'); root.appendChild(list); root.appendChild(pane);
@@ -1018,12 +1024,53 @@
         p.appendChild(opt(N.t('subSize'), [{ v: 38, label: N.t('small') }, { v: 46, label: N.t('medium') }, { v: 54, label: N.t('large') }],
           function () { return N.store.get('subSize', 46); }, function (v) { N.store.set('subSize', v); sample.style.fontSize = v + 'px'; }));
         p.appendChild(sample);
+        p.appendChild(opt(N.t('dlMode'), [{ v: 'off', label: N.t('dlOff') }, { v: 'menu', label: N.t('dlMenu') }, { v: 'auto', label: N.t('dlAuto') }],
+          function () { return N.player.dlMode(); }, function (v) { N.store.set('dlMode', v); }));
         p.appendChild(opt(N.t('autoplay'), onOff, function () { return N.store.get('autoplay', true); }, function (v) { N.store.set('autoplay', v); }));
       },
       display: function (p) {
         p.appendChild(opt(N.t('reduce'), onOff.slice().reverse().map(function (x) { return x; }), function () { return N.store.get('calm', false); }, function (v) {
           N.store.set('calm', v); document.body.classList.toggle('calm', v);
         }));
+      },
+      takeover: function (p) {
+        var tk = N.takeover, st = el('div', 'note tkst', N.t('tkChecking')), body = el('div', 'tkbody scroll');
+        p.appendChild(el('div', 'note tkh', N.t('tkTitle'))); p.appendChild(st); p.appendChild(body);
+        function status(txt, bad) { st.textContent = txt; st.classList.toggle('bad', !!bad); }
+        function trow(label, sub, on, fn) {
+          var r = el('div', 'orow sm f fl'), l = el('span', 'tkl', label); if (sub) l.appendChild(el('small', 'tkid', sub));
+          var v = el('div', 'v', ''); r.appendChild(l); r.appendChild(v);
+          function paint() { v.textContent = on ? '★ ' + N.t('on') : N.t('off'); r.classList.toggle('tkon', on); }
+          paint(); r.onenter = r.onclick = function () { on = !on; paint(); fn(on); };
+          return r;
+        }
+        function paint(s) {
+          if (dead || !pane.contains(body)) return;
+          var keep = N.nav.cur && body.contains(N.nav.cur) ? Array.prototype.indexOf.call(body.querySelectorAll('.f'), N.nav.cur) : -1;
+          body.innerHTML = ''; var cfg = s.cfg || {}, trig = cfg.triggers || [];
+          status(N.t('tkRunning'));
+          body.appendChild(trow(N.t('tkEnable'), '', !!cfg.enabled, function (on) { N.store.set('tkOn', on); push({ enabled: on }); }));
+          var seen = {}, apps = [], i, a;
+          function add(id, name) { if (!id) return; if (seen[id]) { if (!seen[id].name && name) seen[id].name = name; return; } seen[id] = { id: id, name: name || '' }; apps.push(seen[id]); }
+          for (i = 0; i < (s.known || []).length; i++) add(s.known[i].id, s.known[i].name);
+          for (var id in (s.seen || {})) add(id, s.seen[id] && s.seen[id].name);
+          for (i = 0; i < trig.length; i++) add(trig[i], '');
+          apps.sort(function (x, y) { return String(x.name || x.id).localeCompare(String(y.name || y.id)); });
+          body.appendChild(el('div', 'note tkh', N.t('tkApps')));
+          if (!apps.length) body.appendChild(el('div', 'note', N.t('tkNoApps')));
+          apps.forEach(function (app) {
+            body.appendChild(trow(app.name || app.id, app.name ? app.id : '', trig.indexOf(app.id) >= 0, function (on) {
+              var t = (cfg.triggers || []).filter(function (x) { return x !== app.id; }); if (on) t.push(app.id); cfg.triggers = t; trig = t; push({ triggers: t });
+            }));
+          });
+          body.appendChild(el('div', 'note', N.t('tkHelp')));
+          if (keep >= 0) { var fs = body.querySelectorAll('.f'); if (fs[keep]) N.nav.focus(fs[keep], true); }
+        }
+        function push(c) { tk.setConfig(c, function (err, s) { if (dead) return; if (err) { status(N.t('tkErr') + (err.message ? ': ' + err.message : ''), true); return; } if (s) paint(s); }); }
+        function fail(err) { if (dead) return; body.innerHTML = ''; if (err && err.message === 'unsupported') status(N.t('tkUnsupported')); else status(N.t('tkErr') + (err && err.message ? ': ' + err.message : ''), true); }
+        function load() { tk.state(function (err, s) { if (dead) return; if (err || !s) return tk.ensureService(function (e2) { if (e2) return fail(e2); tk.state(function (e3, s3) { if (e3 || !s3) fail(e3); else paint(s3); }); }); paint(s); }); }
+        if (!tk) { status(N.t('tkUnsupported')); return; }
+        load();
       },
       about: function (p) {
         p.appendChild(info('30nama TV', ''));
