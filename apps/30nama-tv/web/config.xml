@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
+        id="http://yourdomain.com/Nama30TVQ82B" version="1.6.46" viewmodes="maximized">
+  <tizen:application id="Nama30Q82B.Nama30TV" package="Nama30Q82B" required_version="2.3"/>
+  <content src="index.html"/>
+  <tizen:metadata key="http://samsung.com/tv/metadata/use.preview" value="endpoint_URL=http://192.168.1.12:8793/30nama-preview.json"/>
+  <tizen:app-control>
+    <tizen:src name="index.html" reload="disable"/>
+    <tizen:operation name="http://samsung.com/appcontrol/operation/eden_resume"/>
+  </tizen:app-control>
+  <feature name="http://tizen.org/feature/screen.size.all"/>
+  <icon src="icon.png"/>
+  <name>30nama TV</name>
+  <author>personal</author>
+  <description>Unofficial 30nama client for Samsung Tizen TV</description>
+  <tizen:privilege name="http://tizen.org/privilege/internet"/>
+  <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+  <tizen:privilege name="http://tizen.org/privilege/application.launch"/>
+  <tizen:privilege name="http://developer.samsung.com/privilege/productinfo"/>
+  <access origin="*" subdomains="true"/>
+  <tizen:setting screen-orientation="landscape" context-menu="disable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable"/>
+</widget>
