@@ -14,19 +14,32 @@
   var ACCT = ['account', 'user', function () { N.go('settings', { section: 'account' }, { reset: true }); }];
 
   /* ---------------- home cache ---------------- */
-  var hc = { t: 0, p: null };
+  var hc = null;
   N.getHome = function () {
-    if (hc.p && Date.now() - hc.t < 90000) return hc.p;
-    hc.t = Date.now();
-    hc.p = N.api.get('home_stream').then(function (r) { N.store.set('homeCache', r); return r; }).catch(function (e) {
-      hc.p = null;
-      var c = N.store.get('homeCache', null); // last good Home: show it instead of an error, and retry in the background
-      if (c) { setTimeout(function () { N.getHome(); }, 15000); return c; }
-      throw e;
+    var session = N.session, lang = N.lang;
+    var user = session && session.user;
+    var owner = user && (user.user_id || user.id || user.user_name);
+    var cacheKey = !session ? 'homeCache.' + lang + '.guest' : owner ? 'homeCache.' + lang + '.user.' + owner : null;
+    if (hc && hc.session === session && hc.lang === lang && (!hc.time || Date.now() - hc.time < hc.ttl)) return hc.promise;
+    var request = { session: session, lang: lang, time: 0, ttl: 90000 };
+    hc = request;
+    request.promise = N.api.get('home_stream').then(function (result) {
+      request.time = Date.now();
+      if (hc === request && N.session === session && N.lang === lang && cacheKey) N.store.set(cacheKey, result);
+      return result;
+    }).catch(function (error) {
+      var saved = cacheKey && N.store.get(cacheKey, null);
+      if (saved && hc === request && N.session === session && N.lang === lang) {
+        request.time = Date.now();
+        request.ttl = 15000;
+        return saved;
+      }
+      if (hc === request) hc = null;
+      throw error;
     });
-    return hc.p;
+    return request.promise;
   };
-  N.dropHome = function () { hc.p = null; };
+  N.dropHome = function () { hc = null; };
 
   /* ---------------- splash ---------------- */
   var splash = { t0: Date.now(), done: false, failT: null };
@@ -241,7 +254,10 @@
   function build(entry) {
     var oldCur = current, old = rootEl;
     if (oldCur && oldCur.destroy) { try { oldCur.destroy(); } catch (e) {} }
-    if (old && old.parentNode) old.parentNode.removeChild(old);
+    if (old && old.parentNode) {
+      Array.prototype.forEach.call(old.querySelectorAll('.card'), N.ui.unload);
+      old.parentNode.removeChild(old);
+    }
     N.nav.clear(); N.nav.locked = false;
     var r = el('div', 'screen enter ' + entry.name); content.appendChild(r); rootEl = r;
     setChrome(entry.name);
@@ -254,6 +270,10 @@
     if (rail.open) { rail.open = false; rail.root.classList.remove('open'); rail.mem = null; }
     if (rootEl && current) {
       rootEl.classList.add('leave'); N.nav.clear(); N.nav.locked = true;
+      if (entry.name === 'archive') {
+        var request = N.screens.preloadArchive(entry.params, entry.focus);
+        if (request) request.catch(function () {}); // The incoming screen handles failures.
+      }
       swapT = setTimeout(function () { build(entry); }, document.body.classList.contains('calm') ? 0 : 110);
     } else build(entry);
   }

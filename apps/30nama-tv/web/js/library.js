@@ -5,8 +5,8 @@
   N.library={all:items,has:function(id){return items().some(function(p){return String(p.id)===String(id);});},toggle:function(post){var list=items(),had=N.library.has(post.id);list=list.filter(function(p){return String(p.id)!==String(post.id);});if(!had&&list.length>=200){N.toast(N.t('listFull'));return false;}if(!had)list.unshift(clean(post));N.store.set('myList',list);if(N.library.has(post.id)===had){N.toast(N.t('listSaveError'));return had;}N.toast(N.t(had?'removedTitle':'savedTitle'));document.dispatchEvent(new CustomEvent('nama:listchanged'));return !had;}};
   N.screens.myList=function(root,params,restore){
     root.classList.add('archive','my-list');N.stage.dim(.72);
-    var box=N.el('div','arch'),title=N.el('div','ah head',N.t('myList')),sub=N.el('div','arch-sub head',N.t('listIntro')),windowEl=N.el('div','my-list-window'),track=N.el('div','my-list-track');
-    box.appendChild(title);box.appendChild(sub);windowEl.appendChild(track);box.appendChild(windowEl);root.appendChild(box);
+    var box=N.el('div','arch'),title=N.ui.collectionHeading(N.t('myList'),'list',N.t('listIntro')),windowEl=N.el('div','my-list-window'),track=N.el('div','my-list-track');
+    box.appendChild(title);windowEl.appendChild(track);box.appendChild(windowEl);root.appendChild(box);
     var saved=items(),position=N.el('div','my-list-position tab');box.appendChild(position);
     if(!saved.length){var empty=N.el('div','my-list-empty');empty.appendChild(N.ui.icon('list'));empty.appendChild(N.el('div','h-l',N.t('emptyList')));empty.appendChild(N.el('p','',N.t('listHint')));var back=N.ui.btn(N.t('browse'),function(){N.go('archive',{}, {reset:true});},'primary');empty.appendChild(back);box.appendChild(empty);N.nav.focus(back,true);}
     var viewport=N.ui.windowGrid(track,track,{cols:3,pitch:321,column:552,top:26,height:810,create:function(i){

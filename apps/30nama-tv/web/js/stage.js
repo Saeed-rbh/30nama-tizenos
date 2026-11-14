@@ -84,6 +84,18 @@
     clearTimeout(timer); clearTimeout(loadTimer); token++;
     if (cancelArt) { cancelArt(); cancelArt = null; }
   };
+  S.clearArtwork = function () {
+    init();
+    S.cancel();
+    layers.forEach(function (layer, index) {
+      clearTimeout(cleanT[index]);
+      layer.onload = layer.onerror = null;
+      layer.className = 'bd';
+      layer.removeAttribute('src');
+    });
+    cur = -1; curSrc = null; curId = null; dissolveUntil = 0;
+    stageEl.classList.remove('has-bleed');
+  };
   S.dim = function (level) { init(); dimEl.style.opacity = level; };
   S.details = function (on) { init(); stageEl.classList.toggle('details', !!on); };
   S.hide = function () { init(); stageEl.style.display = 'none'; };

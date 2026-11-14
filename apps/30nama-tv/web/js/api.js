@@ -12,11 +12,11 @@
   }
   function enc(params) {
     var out = [];
-    for (var k in params) if (params.hasOwnProperty(k) && params[k] !== undefined && params[k] !== null)
+    for (var k in params) if (Object.prototype.hasOwnProperty.call(params, k) && params[k] !== undefined && params[k] !== null)
       out.push(encodeURIComponent(k) + '=' + encodeURIComponent(params[k]));
     return out.join('&');
   }
-  api.raw = function (host, key, name, params, token) {
+  api.raw = function (host, key, name, params, token, language, deadline) {
     // dev/test hook: tools-video/eps-test.js injects window.__mock = {action: fn(params) -> envelope}
     if (window.__mock && window.__mock[name]) return Promise.resolve(window.__mock[name](params || {}));
     var headers = {
@@ -24,20 +24,36 @@
       'c-api-key': key,
       'c-token': token || '',
       'c-version-number': C.version,
-      'c-language': N.lang
+      'c-language': language || N.lang
     };
-    return timeout(fetch(N.proxied(host + '/action/' + name), { method: 'POST', headers: headers, body: enc(params || {}) }), 20000, name)
-      .then(function (r) {
-        var ra = parseFloat(r.headers && r.headers.get && r.headers.get('retry-after'));
-        return r.text().then(function (txt) {
-          // Observer acknowledges receipt with an empty response. The account history updates separately.
-          if (name === 'observer' && (r.status === 200 || r.status === 204) && !txt.trim()) {
-            return { success: true, result: null };
-          }
-          try { return JSON.parse(txt); }
-          catch (e) { var er = new Error((r.status === 429 ? '429 ' : r.status >= 500 ? '5xx ' : '') + 'bad json from ' + name); er.retry = true; er.retryAfter = isNaN(ra) ? 0 : Math.min(ra, 10) * 1000; throw er; }
-        });
-      }, function (e) { e.retry = true; throw e; });
+    var controller = typeof AbortController === 'function' ? new AbortController() : null;
+    var options = { method: 'POST', headers: headers, body: enc(params || {}) };
+    if (controller) options.signal = controller.signal;
+    var request = fetch(N.proxied(host + '/action/' + name), options).then(function (r) {
+      var ra = parseFloat(r.headers && r.headers.get && r.headers.get('retry-after'));
+      return r.text().then(function (txt) {
+        // JSON error responses and proxy error pages follow the same HTTP backoff.
+        if (r.status === 429 || r.status >= 500) {
+          var error = new Error(r.status === 429 ? '429 rate limited' : '5xx from ' + name);
+          error.status = r.status;
+          error.retryAfter = isNaN(ra) ? 0 : Math.max(0, Math.min(ra, 10) * 1000);
+          throw error;
+        }
+        // Observer acknowledges receipt with an empty response. The account history updates separately.
+        if (name === 'observer' && (r.status === 200 || r.status === 204) && !txt.trim()) {
+          return { success: true, result: null };
+        }
+        try { return JSON.parse(txt); }
+        catch (e) { var er = new Error('bad json from ' + name);
+          er.rateLimited = /error code:\s*1015/i.test(txt);
+          throw er; }
+      });
+    });
+    return timeout(request, deadline || 20000, name).catch(function (e) {
+      if (controller) controller.abort();
+      e.retry = true;
+      throw e;
+    });
   };
 
   /* ---------- global request scheduler ----------
@@ -55,21 +71,29 @@
     var j = background ? Q.bg.shift() : Q.core.shift();
     if (background) backgroundInflight++;
     inflight++; lastStart = now;
-    j.run().then(function (v) { inflight--; if (background) backgroundInflight--; j.res(v); pump(); }, function (e) { inflight--; if (background) backgroundInflight--; j.rej(e); pump(); });
+    function release() { inflight--; if (background) backgroundInflight--; }
+    Promise.resolve().then(j.run).then(function (v) {
+      release(); j.res(v); pump();
+    }, function (e) {
+      if (e && (e.status === 429 || e.rateLimited)) {
+        pausedUntil = Math.max(pausedUntil, Date.now() + Math.max(BACKOFF[0], e.retryAfter || 0));
+      }
+      release(); j.rej(e); pump();
+    });
     pump();
   }
   function schedule(bg, run) { return new Promise(function (res, rej) { (bg ? Q.bg : Q.core).push({ run: run, res: res, rej: rej }); pump(); }); }
   api.sched = function (name, params, opts) {
     var bg = !!(opts && opts.bg), tries = NO_RETRY[name] ? 0 : BACKOFF.length;
-    var reportSession = name === 'observer' ? N.session : null;
+    var session = N.session, language = N.lang;
     function attempt(n) {
       return schedule(bg, function () {
-        if (name === 'observer' && (!reportSession || reportSession !== N.session)) return Promise.resolve(null);
-        return api.rawCall(name, params);
+        if (name === 'observer' && (!session || session !== N.session)) return null;
+        if (name !== 'logout' && (session !== N.session || (name !== 'observer' && language !== N.lang))) throw new Error('Request context changed');
+        return api.raw(api.host, api.key, name, params, session && session.token, language);
       }).catch(function (e) {
         if (n < tries && e && e.retry) {
           var d = Math.max(BACKOFF[n], e.retryAfter || 0);
-          pausedUntil = Math.max(pausedUntil, Date.now() + d);
           return new Promise(function (r) { setTimeout(r, d); }).then(function () { return attempt(n + 1); });
         }
         throw e;
@@ -77,44 +101,49 @@
     }
     return attempt(0);
   };
-  api.rawCall = function (name, params) { return api.raw(api.host, api.key, name, params, N.session ? N.session.token : ''); };
 
-  // Try a discovery URL (CORS may block it in a browser; fall back to hardcoded hosts).
-  function discover() {
-    var tries = C.discoveryUrls.map(function (u) {
-      return timeout(fetch(N.proxied(u + '?t=' + Date.now())).then(function (r) { return r.json(); }), 6000, 'discovery')
-        .then(function (list) { if (!list || !list.length) throw new Error('empty'); return list; });
-    });
-    // first success wins
-    return new Promise(function (res) {
-      var left = tries.length, done = false;
-      tries.forEach(function (p) {
-        p.then(function (l) { if (!done) { done = true; res(l); } }, function () { if (--left === 0 && !done) res(C.fallbackHosts); });
-      });
-    });
-  }
-
-  // Probe `test` on all hosts with each key; choose the first that answers successfully.
+  // Probe built-in and last-known endpoints while discovery is still running.
   api.init = function () {
-    return discover().then(function (list) {
-      var seen = {}, hosts = [];
-      list.concat(C.fallbackHosts).forEach(function (h) { if (!seen[h.host]) { seen[h.host] = 1; hosts.push(h.host); } });
-      var cached = N.store.get('host', null);
-      if (cached && !seen[cached]) hosts.unshift(cached);
-      function tryKey(ki) {
-        if (ki >= C.apiKeys.length) return Promise.reject(new Error('no endpoint reachable'));
+    var cached = N.store.get('host', null), probes = Object.create(null);
+    function probe(list) {
+      var hosts = list.map(function (entry) { return entry && entry.host; }).filter(function (host, index, all) {
+        return typeof host === 'string' && /^https:\/\//i.test(host) && all.indexOf(host) === index;
+      });
+      function firstKey(ki) {
+        if (!hosts.length || ki >= C.apiKeys.length) return Promise.reject(new Error('no endpoint reachable'));
         var key = C.apiKeys[ki];
-        return new Promise(function (res, rej) {
-          var left = hosts.length, done = false;
-          hosts.forEach(function (h) {
-            timeout(api.raw(h, key, 'test', {}), 8000, 'test').then(function (j) {
-              if (j && j.success && !done) { done = true; res({ host: h, key: key, ki: ki }); }
-              else if (--left === 0 && !done) rej(new Error('rejected'));
-            }, function () { if (--left === 0 && !done) rej(new Error('unreachable')); });
+        return new Promise(function (resolve, reject) {
+          var remaining = hosts.length;
+          function miss() { if (--remaining === 0) reject(new Error('no endpoint accepted the key')); }
+          hosts.forEach(function (host) {
+            var id = ki + '|' + host;
+            var request = probes[id] || (probes[id] = api.raw(host, key, 'test', {}, '', N.lang, 8000));
+            request.then(function (j) {
+              if (j && j.success) resolve({ host: host, key: key, ki: ki });
+              else miss();
+            }, miss);
           });
-        }).catch(function () { return tryKey(ki + 1); });
+        }).catch(function () { return firstKey(ki + 1); });
       }
-      return tryKey(0);
+      return firstKey(0);
+    }
+    var known = cached ? [{ host: cached }].concat(C.fallbackHosts) : C.fallbackHosts;
+    return new Promise(function (resolve, reject) {
+      var remaining = C.discoveryUrls.length + 1, settled = false;
+      function accept(result) { if (!settled) { settled = true; resolve(result); } }
+      function miss() { if (--remaining === 0 && !settled) reject(new Error('no endpoint reachable')); }
+      probe(known).then(accept, miss);
+      C.discoveryUrls.forEach(function (url) {
+        var request = fetch(N.proxied(url + '?t=' + Date.now())).then(function (response) {
+          if (response.ok === false) throw new Error('Endpoint discovery failed');
+          return response.json();
+        });
+        timeout(request, 6000, 'discovery').then(function (list) {
+          if (settled) return;
+          if (!Array.isArray(list) || !list.length) { miss(); return; }
+          probe(list).then(accept, miss);
+        }, miss);
+      });
     }).then(function (r) {
       api.host = r.host; api.key = r.key; api.keyIndex = r.ki; N.store.set('host', r.host);
       return r;
@@ -123,8 +152,11 @@
 
   // Generic action. Resolves with envelope; rejects on network errors.
   api.call = function (name, params, opts) {
-    var session = N.session;
+    var session = N.session, language = N.lang;
     return api.sched(name, params, opts).then(function (j) {
+      if (name !== 'logout' && (session !== N.session || (name !== 'observer' && language !== N.lang))) {
+        throw new Error('Request context changed');
+      }
       if (j && !j.success && /login required/i.test(j.msg || '') && session && N.session === session) {
         // session invalid/expired
         N.logout(true);

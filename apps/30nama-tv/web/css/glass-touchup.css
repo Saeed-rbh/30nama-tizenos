@@ -76,9 +76,16 @@ html[dir=rtl] #rail.open .ri.acct{left:auto;right:16px}
 html[dir=rtl] #rail.open .ri.acct .av{left:auto;right:24px}
 html[dir=rtl] #rail.open .ri.acct .lb{left:auto;right:88px}
 /* Archive: editorial headings, floating segmented filters, and cinematic genres. */
-.archive .arch .ah{top:62px;font-weight:600;letter-spacing:-1.2px}
-.archive .arch-sub{position:absolute;left:var(--start);top:142px;font-size:26px;line-height:1.5;color:var(--text-2)}
-html[dir=rtl] .archive .arch-sub{left:auto;right:var(--start)}
+.collection-heading { position: absolute; top: 64px; left: var(--start); display: flex; align-items: flex-start; width: 900px; }
+html[dir=rtl] .collection-heading { left: auto; right: var(--start); }
+.collection-heading .collection-mark { margin-right: 22px; }
+html[dir=rtl] .collection-heading .collection-mark { margin-right: 0; margin-left: 22px; }
+.collection-mark { display: flex; align-items: center; justify-content: center; flex: 0 0 76px; height: 76px; border-radius: 22px; background: var(--button-dark-glass); border: 1px solid var(--glass-edge); box-shadow: inset 0 1px 0 rgba(255,246,242,.12); color: var(--accent-label); }
+.collection-mark .ico { width: 38px; height: 38px; }
+.collection-copy { flex: 1 1 0%; min-width: 0; }
+.collection-title { font-size: var(--t-display); line-height: 1.05; font-weight: 700; color: var(--text-1); overflow-wrap: break-word; }
+html[dir=ltr] .collection-title { letter-spacing: -.035em; }
+.collection-subtitle { margin-top: 0; font-size: 25px; line-height: 1.4; color: var(--text-2); }
 .archive .cats{margin-top:212px;width:1640px}
 .archive .cats .pill{height:68px;padding:0 30px;margin-bottom:16px;border-radius:21px;background:var(--button-dark-glass);box-shadow:inset 0 0 0 1px rgba(255,255,255,.17),0 6px 22px rgba(0,0,0,.12);font-weight:500;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 .archive .cats .pill .ico{font-size:28px;margin-right:14px}
@@ -101,20 +108,16 @@ html[dir=rtl] .archive .tiles .card.k-tile .tn,html[dir=rtl] .archive .tiles .ca
 html[dir=rtl] .archive .tile-open{right:auto;left:22px}
 html[dir=rtl] .archive .tile-open .ico{transform:none}
 html[dir=rtl] .archive .card.focus .tile-open{transform:translateX(-3px)}
-.archive .arch .sorts{top:66px;padding:8px;border-radius:24px;background:var(--action-surface);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 8px 28px rgba(0,0,0,.12);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-.archive .arch .sorts .pill{height:58px;padding:0 24px;border-radius:17px;font-size:24px;font-weight:500;background:transparent}
-.archive .arch .sorts .pill+.pill{margin-left:4px}
-html[dir=rtl] .archive .arch .sorts .pill+.pill{margin-left:0;margin-right:4px}
-.archive .arch .sorts .pill.cur{background:var(--button-selected-glass);color:var(--text-1);box-shadow:inset 0 1px 0 rgba(255,255,255,.1)}
-.archive .arch .sorts .pill.cur::after{display:none}
-.archive .arch .sorts .pill.focus{background:var(--button-light-glass);color:var(--focus-ink);box-shadow:0 4px 15px rgba(0,0,0,.18)}
-.archive .ggrid .card{border-radius:18px}
-.archive .ggrid .card::after{border-radius:24px;border-width:3px}
-.archive .ggrid .card.focus{transform:scale(1.055)}
-.archive .ggrid .gt{font-weight:500;color:var(--text-2)}
-.archive .ggrid .card.focus+.gt{color:white}
+.archive .arch .sorts { top: 75px; }
+.archive .sorts .pill, .archive-filters .pill { box-shadow: inset 0 0 0 1px var(--glass-edge); }
+.archive .sorts .pill.focus, .archive-filters .pill.focus { box-shadow: 0 4px 15px rgba(0,0,0,.18); }
+.catalog-posters .card{border-radius:18px}
+.catalog-posters .card::after{border-radius:24px;border-width:3px}
+.catalog-posters .card.focus{transform:scale(1.055)}
+.catalog-posters .gt{font-weight:500;color:var(--text-2)}
+.catalog-posters .card.focus+.gt{color:white}
 .archive .year-menu{top:154px;padding:12px;border:1px solid rgba(255,255,255,.24);border-radius:26px;background:var(--action-surface);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 24px 64px rgba(0,0,0,.42)}
-.archive .year-menu .pill{height:58px;border-radius:15px;background:transparent;font-weight:500}
+.archive .year-menu .pill{height:56px;background:var(--button-highlight),rgba(255,255,255,.08)}
 .archive .year-menu .pill.cur{background:var(--button-selected-glass);color:var(--text-1)}
 .archive .year-menu .pill.focus{background:var(--button-light-glass);color:var(--focus-ink)}
 .archive .year-menu .pill.cur::after{display:none}
@@ -129,7 +132,7 @@ body.calm .select-feedback{animation:none!important}
 .pill.focus{transform:scale(1.025)}
 body.calm .pill.focus{transform:none}
 
-.archive .ggrid .gt{top:326px}
+.catalog-posters .gt{top:326px}
 
 /* My List adds one row; keep the sidebar's balanced inner padding. */
 .rail-panel{height:544px}
@@ -302,6 +305,7 @@ html[dir=rtl] #stage.home-stage .scrim-start {
 }
 .home .bb { height: 432px; width: 900px; }
 .home .bb-eyebrow { flex: none; margin-top: 10px; font-weight: 600; }
+.home .cover-preview .bb-eyebrow { order: -1; margin-top: 0; }
 .home .bb-title { flex: none; margin: 8px 0 14px; }
 .home .bb-meta { flex: none; }
 .home .bb-plot { flex: none; margin-top: 6px; -webkit-line-clamp: 2; }
@@ -441,12 +445,37 @@ body.fast .skel-wrap, body.calm .skel-wrap { animation: none; }
 .center-msg .btn { min-width: 200px; height: 70px; border-radius: var(--r-pill); }
 .center-msg .m { line-height: 1.5; }
 .btn:disabled, .pill:disabled, .key:disabled { opacity: .5; transform: none; }
-.archive.gridpage .ah { max-width: 780px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.archive .ggrid .archive-meta { position: absolute; top: 350px; left: 0; right: 0; font-size: 20px; line-height: 26px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.archive .ggrid .gt { line-height: 32px; }
+.catalog-posters .archive-meta { position: absolute; top: 350px; left: 0; right: 0; font-size: 20px; line-height: 26px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.catalog-posters .gt { line-height: 32px; }
 
 /* Reserve artwork space before loading; plain titles never flash beneath a logo. */
 .bb-title.title-art, .bb-title.has-logo { min-height: 136px; }
 .title-pending .tt { opacity: 0; }
 .bb-title.has-logo .tt { opacity: 0; }
 .bb-title .logo, .d-title .logo { transition: none; }
+
+.tmdb-token-row { gap: 12px; }
+.tmdb-token-input { min-width: 0; flex: 1; height: 60px; padding: 0 16px; border: 1px solid var(--glass-edge); border-radius: 12px; color: var(--text-1); background: var(--button-dark-glass); font: inherit; direction: ltr; }
+.tmdb-token-input.focus { outline: 2px solid var(--focus); }
+.tmdb-token-row .btn { height: 60px; padding: 0 22px; }
+
+/* Person header and filmography reuse the Details and Archive visual language. */
+.person-layout { position: absolute; top: 68px; bottom: 48px; left: var(--start); right: calc(var(--safe-x) - 12px); display: flex; flex-direction: column; }
+html[dir=rtl] .person-layout { right: var(--start); left: calc(var(--safe-x) - 12px); }
+.person-header { display: flex; flex: none; align-items: center; min-height: 132px; gap: 28px; }
+.person-header .person-back { flex: none; align-self: flex-start; height: 70px; border-radius: var(--r-pill); }
+html[dir=rtl] .person-back .ico { transform: scaleX(-1); }
+.person-bio { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 1020px; margin-top: 4px; color: var(--text-2); font-size: 24px; line-height: 1.45; text-align: start; }
+.person-bio:empty { display: none; }
+.person-heading { flex: 1; min-width: 0; }
+.person-heading h1 { margin: 0; font-size: 60px; line-height: 1.16; overflow-wrap: break-word; }
+.person-label { color: var(--accent-label); font-size: 26px; font-weight: 600; margin-bottom: 8px; }
+.person-portrait { flex: 0 0 132px; height: 132px; display: flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; background: var(--surface-2); color: var(--text-2); font-size: 42px; }
+.person-portrait img { width: 100%; height: 100%; object-fit: cover; }
+.person-filters { flex: none; display: flex; gap: 12px; margin: 26px 0; }
+.person-scroll { flex: 1; min-height: 0; overflow: auto; scrollbar-width: none; }
+.person-scroll::-webkit-scrollbar { display: none; }
+.person-grid { display: grid; grid-template-columns: repeat(7, 200px); gap: 42px 32px; padding: 16px 0 20px; }
+.person-scroll { margin: 0 -12px; padding: 0 12px; }
+.person-status { color: var(--text-2); padding: 12px 10px; }
+.person-status:empty { display: none; }

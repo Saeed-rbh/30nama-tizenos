@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets"
-        id="http://yourdomain.com/Nama30TVQ82B" version="1.6.46" viewmodes="maximized">
+        id="http://yourdomain.com/Nama30TVQ82B" version="1.6.64" viewmodes="maximized">
   <tizen:application id="Nama30Q82B.Nama30TV" package="Nama30Q82B" required_version="2.3"/>
   <content src="index.html"/>
   <tizen:metadata key="http://samsung.com/tv/metadata/use.preview" value="endpoint_URL=http://192.168.1.12:8793/30nama-preview.json"/>

@@ -68,13 +68,13 @@
     };
   }
   function videoBackend() {
-    var v = $('video'), hls = null;
+    var v = $('video'), hls = null, active = true, startTimer = null;
     return {
       name: 'video',
       load: function (url, startSec, cb) {
         var started = false;
         function go() {
-          if (started) return; started = true;
+          if (!active || started) return; started = true;
           if (startSec > 5) { try { v.currentTime = startSec; } catch (e) {} }
           var pr = v.play(); if (pr && pr.catch) pr.catch(function () {});
           P.spin(false); if (cb) cb();
@@ -87,8 +87,8 @@
         var src = N.proxied(url);
         if (window.Hls && Hls.isSupported()) {
           hls = new Hls({ enableWorker: false });
-          hls.on(Hls.Events.ERROR, function (ev, d) { if (d && d.fatal) P.onError('hls ' + d.details); });
-          hls.on(Hls.Events.MANIFEST_PARSED, function () { setTimeout(go, 0); });
+          hls.on(Hls.Events.ERROR, function (ev, d) { if (active && d && d.fatal) P.onError('hls ' + d.details); });
+          hls.on(Hls.Events.MANIFEST_PARSED, function () { if (active) startTimer = setTimeout(go, 0); });
           hls.loadSource(src); hls.attachMedia(v);
         } else { v.src = src; }
       },
@@ -106,6 +106,7 @@
       },
       setAudio: function (id) { if(hls) hls.audioTrack=id; else if(v.audioTracks) for(var i=0;i<v.audioTracks.length;i++) v.audioTracks[i].enabled=i===Number(id); },
       stop: function () {
+        active = false; clearTimeout(startTimer);
         v.onerror=null;v.onwaiting=null;v.onplaying=null;v.onended=null;v.onloadedmetadata=null;
         try { v.pause(); } catch (e) {}
         if (hls) { hls.destroy(); hls = null; }
@@ -161,15 +162,30 @@
     cues.sort(function (a, b) { return a.s - b.s; });
     return cues;
   };
+  var subtitleRequest = 0;
+  function clearSubtitles() {
+    subtitleRequest++;
+    P.cues = [];
+    var subtitle = $('subtitle');
+    subtitle._t = subtitle.textContent = '';
+  }
   P.setSub = function (lang) {
-    P.subLang = lang; P.cues = []; $('subtitle').textContent = '';
+    clearSubtitles();
+    var request = subtitleRequest;
+    P.subLang = lang;
     if (lang === 'off') return Promise.resolve();
     var item = P.items[P.index], u = item && item.file && subUrl(item.file.subtitle && item.file.subtitle[lang]);
     if (!u) return Promise.resolve();
     if (P.subCache[u]) { P.cues = P.subCache[u]; return Promise.resolve(); }
-    return fetch(N.proxied(u)).then(function (r) { return r.text(); }).then(function (t) {
-      P.subCache[u] = P.parseVTT(t); if (P.subLang === lang) P.cues = P.subCache[u];
-    }).catch(function () { N.toast(N.t('subFailed')); });
+    return fetch(N.proxied(u)).then(function (r) {
+      if (!r.ok) throw new Error('Subtitle request failed');
+      return r.text();
+    }).then(function (t) {
+      if (request !== subtitleRequest) return;
+      P.cues = P.subCache[u] = P.parseVTT(t);
+    }).catch(function () {
+      if (request === subtitleRequest) N.toast(N.t('subFailed'));
+    });
   };
   function renderSub(t) {
     var cs = P.cues, txt = '';
@@ -201,7 +217,10 @@
   };
   function seriesLine(item, i) {
     var info = item.info || {};
-    if (P.items.length > 1 || info.season) return 'S' + (info.season || 1) + ' · E' + N.ui.epLabel(info.episode, i + 1) + (N.ui.epName(item) ? ' — ' + N.ui.epName(item) : '');
+    if (P.items.length > 1 || info.season || info.episode) {
+      var name = N.ui.epName(item);
+      return N.ui.fullEpisodeLabel(info, i + 1) + (name ? ' — ' + name : '');
+    }
     return '';
   }
   P.playIndex = function (i, selectedUrl, recovering, finished) {
@@ -212,8 +231,8 @@
     P.reportNow(finished);
     if (P.be) P.be.stop();
     P.be = null;
-    P.index = i; P.paused = false; P.cues = []; P.subLang = N.store.get('sub', 'off');
-    $('subtitle').textContent = ''; P.hideSkip(); P.hideUpNext(true); P.closeEps(true);
+    P.index = i; P.paused = false; P.subLang = N.store.get('sub', 'off');
+    clearSubtitles(); P.hideSkip(); P.hideUpNext(true); P.closeEps(true);
     var m3u8 = selectedUrl || (item.file && P.pickUrl(item.file.m3u8));
     if (typeof m3u8 === 'string') m3u8 = m3u8.replace(/^\s+|\s+$/g, '');
     if (!m3u8 || typeof m3u8 !== 'string') { var raw = ''; try { raw = JSON.stringify(item.file && item.file.m3u8).slice(0, 160); } catch (e) {} N.toast(N.t('noStream') + ' ' + raw, 6000); return P.close(); }
@@ -252,7 +271,7 @@
     P.dragging=false;P.dragTime=null;P.seekTarget=null;
     P.open = false; $('player').classList.add('hidden'); document.body.classList.remove('playing');
     $('player').classList.remove('osd-on'); $('osd').classList.add('off');
-    $('subtitle').textContent = '';
+    clearSubtitles();
     N.nav.popHandler(P.onKey);
     if (N.onPlayerClosed) N.onPlayerClosed();
   };
@@ -283,15 +302,18 @@
 
   P.seekTo=function(sec){if(!P.be)return;var d=P.be.duration();var t=Math.max(0,Math.min(d>0?d-.05:Infinity,Number(sec)||0));P.lastGoodTime=t;P.be.seek(t);P.tick();};
   function playNext() { P.playIndex(P.index + 1, null, false, true); }
-  P.onEnded = function () { if (P.index + 1 < P.items.length) playNext(); else P.close(true); };
+  P.onEnded = function () {
+    if (P.index + 1 < P.items.length && N.store.get('autoplay', true)) playNext();
+    else P.close(true);
+  };
 
   /* ---------- progress reporting (observer) ---------- */
-  var pendingReport = null, reportInFlight = false, reportRetry = null;
+  var pendingReports = [], reportInFlight = false, reportRetry = null, waitingForNetwork = false;
   function flushReport() {
-    if (reportInFlight || reportRetry || !pendingReport) return;
-    var report = pendingReport;
-    pendingReport = null;
-    if (report.session !== N.session) return;
+    if (reportInFlight || reportRetry) return;
+    while (pendingReports.length && pendingReports[0].session !== N.session) pendingReports.shift();
+    if (!pendingReports.length) return;
+    var report = pendingReports.shift();
     reportInFlight = true;
     N.api.call('observer', report.body).then(function (response) {
       reportInFlight = false;
@@ -302,22 +324,29 @@
       flushReport();
     }, function (error) {
       reportInFlight = false;
-      if (report.final && error && error.retry && !pendingReport && report.session === N.session && report.retries < 2) {
-        report.retries++;
-        pendingReport = report;
-        reportRetry = setTimeout(function () {
-          reportRetry = null;
-          flushReport();
-        }, Math.max(2000 * report.retries, error.retryAfter || 0));
+      if (report.final && error && error.retry && report.session === N.session) {
+        report.retries = Math.min(report.retries + 1, 6);
+        pendingReports.unshift(report);
+        waitingForNetwork = report.retries > 2 && !(error.retryAfter > 0) && error.status !== 429;
+        var delay = report.retries <= 2 ? 2000 * report.retries : Math.min(60000, 5000 * Math.pow(2, report.retries - 2));
+        reportRetry = setTimeout(resumeReports, Math.max(delay, error.retryAfter || 0));
       } else {
-        if (report.final && !pendingReport && report.session === N.session) {
-          console.warn('30nama playback progress could not be sent');
-        }
+        if (report.final && report.session === N.session) console.warn('30nama playback progress could not be sent');
         flushReport();
       }
     });
   }
+  function resumeReports() {
+    clearTimeout(reportRetry);
+    reportRetry = null;
+    waitingForNetwork = false;
+    flushReport();
+  }
+  if (window.addEventListener) window.addEventListener('online', function () {
+    if (waitingForNetwork) resumeReports();
+  });
   P.report = function (finished, final) {
+    if (P.paused && !final) return;
     if (!P.be || P.loading || !N.isLoggedIn()) return;
     var item = P.items[P.index];
     if (!item) return;
@@ -338,9 +367,13 @@
       if (final) console.warn('30nama progress report is missing required playback or account data');
       return;
     }
-    pendingReport = { body: body, session: N.session, final: final || P.paused, retries: 0 };
-    if (reportRetry) { clearTimeout(reportRetry); reportRetry = null; }
-    flushReport();
+    var report = { body: body, session: N.session, final: !!final, retries: 0 };
+    var last = pendingReports[pendingReports.length - 1];
+    // Coalesce heartbeats, but keep episode completion and exit writes ordered.
+    if (last && !last.final) pendingReports[pendingReports.length - 1] = report;
+    else pendingReports.push(report);
+    if (reportRetry && pendingReports[0].session !== N.session) resumeReports();
+    else flushReport();
   };
   P.reportNow = function (finished) { P.report(finished, true); };
   document.addEventListener('visibilitychange', function () { if (document.hidden) P.reportNow(); });
@@ -578,6 +611,7 @@
   P.onKey = function (e) {
     if (!P.open) return false;
     var k = e.keyCode;
+    if (k === K.STOP) { P.close(); return true; }
     if(P.recoveryOpen){if(k===K.BACK||k===K.ESC||k===K.BACKSPACE){P.close();return true;}return false;}
     if (P.menuOpen) {
       if (P.choices && (k === K.BACK || k === K.ESC || k === K.BACKSPACE)) { P.closeChoices(); return true; }
@@ -596,7 +630,6 @@
       if (!$('osd').classList.contains('off') || $('upnext').classList.contains('show')) { P.hideChrome(); return true; }
       P.close(); return true;
     }
-    if (k === K.STOP) { P.close(); return true; }
     P.showOsd();
     var unShown = unState && $('upnext').classList.contains('show');
     if (k === K.UP && !P.skipFocus && !(unShown && unState.active) && (unShown || P.skip)) {

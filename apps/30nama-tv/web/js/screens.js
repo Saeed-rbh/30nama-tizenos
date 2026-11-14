@@ -33,7 +33,7 @@
 
   /* ================= QR login ================= */
   S.login = function (root) {
-    var dead = false, pollT = null, startT = 0, code = null;
+    var dead = false, pollT = null, startT = 0, code = null, qrGeneration = 0;
     root.classList.add('login');
     N.stage.dim(0.55);
     var col = el('div', 'col'); root.appendChild(col);
@@ -61,42 +61,53 @@
       if (p) N.stage.show(p, { immediate: true, done: function () { N.splashReady(); } }); else N.splashReady();
     }).catch(function () { N.splashReady(); });
 
-    function cleanup() { dead = true; clearInterval(pollT); }
+    function cleanup() { dead = true; qrGeneration++; clearInterval(pollT); }
     function begin() {
+      var generation = ++qrGeneration;
+      exp.textContent = N.t('expired');
       tile.classList.remove('dim', 'done'); qrBox.innerHTML = ''; codeEl.textContent = ''; status.style.visibility = 'visible';
       N.api.get('qrlogin_code').then(function (r) {
-        if (dead) return;
+        if (dead || generation !== qrGeneration) return;
         code = r.code; var link = r.url || (N.config.qrBase + code);
         var qr = qrcode(0, 'M'); qr.addData(link); qr.make();
         qrBox.innerHTML = qr.createSvgTag({ cellSize: 6, margin: 0, scalable: true });
         codeEl.textContent = code;
         startT = Date.now(); clearInterval(pollT);
+        var polling = false;
         pollT = setInterval(function () {
-          if (dead) return;
+          if (dead || generation !== qrGeneration) return;
           if (Date.now() - startT > N.config.qrTimeoutMs) { // expired
-            clearInterval(pollT); tile.classList.add('dim'); status.style.visibility = 'hidden'; N.nav.focus(newB, true); return;
+            qrGeneration++; clearInterval(pollT); tile.classList.add('dim'); status.style.visibility = 'hidden'; N.nav.focus(newB, true); return;
           }
+          if (polling) return;
+          polling = true;
           N.api.call('qrlogin_login', { auth_code: code }).then(function (j) {
-            if (dead || !j || !j.success) return; // CODE_NOT_USED -> keep polling
+            if (dead || generation !== qrGeneration || !j || !j.success) return; // CODE_NOT_USED -> keep polling
             var u = userObj(j.result);
             var token = u ? u.user_session : (j.result && (j.result.token || j.result.user_session));
             if (!token) return;
             cleanup();
+            var loginGeneration = qrGeneration;
             N.setSession(u || { user_session: token });
             // qrlogin_login returns only {token}; fetch the profile with it
             N.api.call('user', {}).then(function (uj) {
+              if (loginGeneration !== qrGeneration) return;
               var rr = uj && uj.success && uj.result;
               var full = rr && (rr.user_session ? rr : (rr.user || rr));
               if (full) { if (!full.user_session) full.user_session = token; N.setSession(full); }
             }).catch(function () {}).then(function () {
+              if (loginGeneration !== qrGeneration) return;
               tile.classList.add('done'); status.style.visibility = 'hidden'; N.dropHome();
               N.toast(N.t('welcome') + ' ' + ((N.session.user && N.session.user.user_name) || ''));
-              setTimeout(function () { N.go('home', {}, { reset: true }); N.preview.ready(); }, 400);
+              setTimeout(function () {
+                if (loginGeneration !== qrGeneration) return;
+                N.go('home', {}, { reset: true }); N.preview.ready();
+              }, 400);
             });
-          }).catch(function () {});
+          }).catch(function () {}).then(function () { polling = false; });
         }, N.config.qrPollMs);
       }).catch(function (e) {
-        if (dead) return; tile.classList.add('dim'); exp.textContent = N.t('error'); status.style.visibility = 'hidden'; N.nav.focus(newB, true);
+        if (dead || generation !== qrGeneration) return; tile.classList.add('dim'); exp.textContent = N.t('error'); status.style.visibility = 'hidden'; N.nav.focus(newB, true);
       });
     }
     begin();
@@ -107,7 +118,7 @@
   S.home = function (root, params, restore) {
     var dead = false, st = { mode: 'hero', row: 0 };
     var heroes = [], defs = [], rowEls = [], tracks = [], cards = [], mem = [], tops = [], cwIds = {}, rowObjs = [], shownHero = null;
-    var resumeQueue = [], resumeActive = 0;
+    var resumeQueue = [], resumeActive = 0, cancelLogos = [];
     var bb, bbE, dotsEl, playBtn, detBtn, heroUi, rowsEl, noteBtn = null, noteEl = null;
     var curPost = null, curEb = '', curImm = false, shownKey = '', fT = null, bbT = null, outgoingBillboard = null, lastAct = Date.now(), advT = null, rowsTy = null, heroIdx = 0, heroNav = 0, chPrev = null, chNext = null;
     root.classList.add('home');
@@ -160,7 +171,7 @@
       playBtn = ui.btn(N.t('play'), function () { goDetails(shownHero || heroes[heroIdx], true); }, 'primary', 'play');
       detBtn = ui.btn(N.t('details'), function () { goDetails(shownHero || heroes[heroIdx], false); }, '', 'info');
       var br = el('div', 'br'); br.appendChild(playBtn); br.appendChild(detBtn); heroUi.appendChild(br);
-      heroes.forEach(function (p) { if (p._logo) ui.artwork(p._logo, -1, function () {}); });
+      heroes.forEach(function (p) { if (p._logo) cancelLogos.push(ui.artwork(p._logo, -1, function () {})); });
       dotsEl = el('div', 'dots'); heroes.forEach(function () { dotsEl.appendChild(el('i')); }); heroUi.appendChild(dotsEl);
       root.appendChild(heroUi);
       if (heroes.length > 1) {
@@ -324,6 +335,7 @@
       return ui.typeLabel(p, true);
     }
     function fill(p, eb) {
+      bb.classList.toggle('cover-preview', st.mode === 'browse');
       bbE.eb.textContent = eb; bbE.title.textContent = N.title(p);
       bbE.meta.innerHTML = ''; bbE.meta.appendChild(ui.meta(p, 2)); bbE.plot.textContent = N.plot(p);
       shownHero = p;
@@ -353,19 +365,22 @@
     function follow() { clearTimeout(fT); if (dead || !curPost) return; if (N.nav.isFast()) return; fT = setTimeout(function () { apply(false); }, 260); }
     function apply(first) {
       if (dead || !curPost) return;
-      var post = curPost, eyebrow = curEb, key = post.id + '|' + eyebrow;
+      var post = curPost, eyebrow = curEb, key = st.mode + '|' + post.id + '|' + eyebrow;
       function commitBillboard() {
         if (dead || post !== curPost || eyebrow !== curEb || key === shownKey) return;
         var initial = !shownKey;
         shownKey = key;
         swapBB(post, eyebrow, initial);
-        if (st.mode === 'hero') playBtn.lastChild.textContent = cwIds[post.id] ? N.t('resume') : N.t('play');
+        if (st.mode === 'hero') paintHeroControls(post);
       }
       if (first || st.mode !== 'hero') commitBillboard();
       N.stage.show(post, {
         immediate: curImm || first,
-        done: function () {
-          if (st.mode === 'hero') commitBillboard();
+        done: function (ready) {
+          if (st.mode === 'hero' && post === curPost && eyebrow === curEb) {
+            if (!ready) N.stage.clearArtwork();
+            commitBillboard();
+          }
           if (first) N.splashReady();
         }
       });
@@ -373,10 +388,13 @@
     }
 
     /* ---- hero mode ---- */
+    function paintHeroControls(p) {
+      var index = heroes.indexOf(p), dots = dotsEl.children;
+      for (var k = 0; k < dots.length; k++) dots[k].classList.toggle('on', k === index);
+      playBtn.lastChild.textContent = cwIds[p.id] ? N.t('resume') : N.t('play');
+    }
     function setHero(i, first, uiOnly) {
       heroIdx = i; var p = heroes[i]; if (!p) return;
-      var kids = dotsEl.children; for (var k = 0; k < kids.length; k++) kids[k].classList.toggle('on', k === i);
-      playBtn.lastChild.textContent = cwIds[p.id] ? N.t('resume') : N.t('play');
       if (uiOnly || st.mode !== 'hero') return;
       curPost = p; curEb = eyebrowFor(p, 'hero'); curImm = true; clearTimeout(fT); apply(!!first);
     }
@@ -476,6 +494,7 @@
     return {
       destroy: function () {
         dead = true; clearTimeout(fT); clearTimeout(bbT); clearInterval(advT); document.removeEventListener('keydown', act);
+        cancelLogos.forEach(function (cancel) { cancel(); });
         N.nav.offSettle(follow); N.stage.cancel();
         var c = root.querySelector('.clock'); if (c) clearTimeout(c._t);
       },
@@ -487,7 +506,7 @@
   };
 
   /* ================= Details ================= */
-  S.details = function (root, params) {
+  S.details = function (root, params, restore) {
     var dead = false, epsOpen = false, lastFocus = null, swT = null, curS = null, sheetScope = null;
     root.classList.add('det');
     N.stage.details(true); N.stage.dim(0);
@@ -509,6 +528,7 @@
       }).catch(function (e) { if (!dead) errorView(root, e, function () { root.innerHTML = ''; root.appendChild(sk); load(); }); });
     }
     function render(post, st, detailMetadata) {
+      var restoreCredit = restore && restore.credit;
       root.removeChild(sk);
       var items = (st && st.hls ? st.hls.slice() : []);
       items.sort(ui.epCmp);
@@ -525,10 +545,19 @@
       var plot = el('div', 'd-plot d-fade', N.plot(post)); col.appendChild(plot);
       var facts = el('div', 'd-facts d-fade'); col.appendChild(facts);
       var btns = el('div', 'd-btns d-fade'); col.appendChild(btns);
-      var streamFacts = [];
-      function paintFacts(extra) {
+      var extraFacts = [];
+      function paintFacts() {
+        var streamFacts = [];
+        var selectedFile = items[startIdx] && items[startIdx].file || {};
+        if (Array.isArray(selectedFile.m3u8)) {
+          var qualities = selectedFile.m3u8.map(function (q) { return String(q && q.label || ''); }).filter(function (q) { return /\d/.test(q); });
+          qualities.sort(function (a, b) { return Number(b.replace(/\D/g, '')) - Number(a.replace(/\D/g, '')); });
+          if (qualities.length) streamFacts.push([N.t('quality'), qualities[0]]);
+        }
+        var subLanguages = ['en', 'fa'].filter(function (lang) { return selectedFile.subtitle && selectedFile.subtitle[lang]; });
+        if (subLanguages.length) streamFacts.push([N.t('subtitles'), subLanguages.map(function (lang) { return N.t(lang === 'en' ? 'english' : 'persian'); }).join(', ')]);
         facts.innerHTML = '';
-        streamFacts.concat(extra || []).forEach(function (f) { var bit = el('div', 'd-fact'); bit.appendChild(el('span', 'd-fact-label', f[0])); bit.appendChild(el('span', 'd-fact-value', f[1])); facts.appendChild(bit); });
+        streamFacts.concat(extraFacts).forEach(function (f) { var bit = el('div', 'd-fact'); bit.appendChild(el('span', 'd-fact-label', f[0])); bit.appendChild(el('span', 'd-fact-value', f[1])); facts.appendChild(bit); });
       }
       dpage.appendChild(col); root.appendChild(dpage);
 
@@ -545,14 +574,6 @@
         N.player.start(post, items, i, withResume ? resume : null);
       }
       var playLabel = refreshResume();
-      var selectedFile = items[startIdx] && items[startIdx].file || {};
-      if (selectedFile.m3u8 instanceof Array) {
-        var qualities = selectedFile.m3u8.map(function (q) { return String(q.label || ''); }).filter(function (q) { return /\d/.test(q); });
-        qualities.sort(function (a,b) { return (parseInt(b.replace(/\D/g,''),10)||0) - (parseInt(a.replace(/\D/g,''),10)||0); });
-        if (qualities.length) streamFacts.push([N.t('quality'), qualities[0]]);
-      }
-      var subLanguages = selectedFile.subtitle && Object.keys(selectedFile.subtitle).filter(function (k) { return (k === 'en' || k === 'fa') && selectedFile.subtitle[k]; });
-      if (subLanguages && subLanguages.length) streamFacts.push([N.t('subtitles'), subLanguages.map(function (k) { return N.t(k === 'en' ? 'english' : 'persian'); }).join(', ')]);
       paintFacts();
       var playB;
       if (items.length) playB = ui.btn(playLabel, function () { play(startIdx, true); }, 'primary', 'play');
@@ -659,8 +680,19 @@
       function positionExtras() {
         if (xEl) xEl.style.top = (col.offsetTop + col.offsetHeight + 40) + 'px';
       }
-      function fmtDate(iso) {
-        try { var d = new Date(iso + 'T12:00:00'); return d.toLocaleDateString(N.lang === 'fa' ? 'fa-IR' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return iso; }
+      function scheduleRow(label, episode, iso, currentYear) {
+        var options = { month: 'short', day: 'numeric' };
+        if (Number(iso.slice(0, 4)) !== currentYear) options.year = 'numeric';
+        var date = new Date(iso + 'T12:00:00');
+        var row = el('div', 'd-next fadein');
+        row.appendChild(el('span', 'd-next-label', label));
+        var badge = el('bdi', 'd-next-episode tab', episode);
+        badge.dir = 'ltr';
+        row.appendChild(badge);
+        var dateLabel = el('time', 'd-next-date', date.toLocaleDateString(N.lang === 'fa' ? 'fa-IR' : 'en-US', options));
+        dateLabel.dateTime = iso;
+        row.appendChild(dateLabel);
+        return row;
       }
       function statusText(s) {
         if (N.lang !== 'fa') return s;
@@ -694,11 +726,15 @@
         im.src = url;
         c.querySelector('.fph').appendChild(im);
       }
-      function faceCard(p, role) {
+      function faceCard(p, role, group) {
         var c = el('div', 'card f k-face'), ph = el('div', 'fph');
         ph.appendChild(el('span', '', initials(p.name)));
         c.appendChild(ph); c.appendChild(el('div', 'fnm', p.name)); c.appendChild(el('div', 'frl', role || ''));
         if (p.photo) creditPhoto(c, p.photo);
+        c._credit = { group: group, name: p.name, role: p.role };
+        c.setAttribute('role', 'button');
+        c.setAttribute('aria-label', p.name + ' · ' + N.t('filmography'));
+        c.onclick = function () { N.go('person', { person: { id: p.id, name: p.name, photo: p.photo }, source: post, group: group }); };
         return c;
       }
       var creditsByType = {};
@@ -718,11 +754,18 @@
           })[0];
           var role = key === 'crew' ? N.t(person.role) : person.role;
           if (!known) {
-            var card = faceCard(person, role);
-            list.push({ name: person.name, role: person.role, photo: person.photo, card: card });
+            var card = faceCard(person, role, key);
+            person.card = card;
+            list.push(person);
             xCard(row, card, 180);
+            if (restoreCredit && key === restoreCredit.group && person.name === restoreCredit.name && person.role === restoreCredit.role &&
+                (!N.nav.cur || N.nav.cur === playB) && !N.rail.open && !N.nav.scopes.length) {
+              restoreCredit = null;
+              N.nav.focus(card);
+            }
             return;
           }
+          if (!known.id && person.id) known.id = person.id;
           if (!known.role && person.role) { known.role = person.role; known.card.querySelector('.frl').textContent = role; }
           if (!known.photo && person.photo) { known.photo = person.photo; creditPhoto(known.card, person.photo); }
         });
@@ -744,16 +787,17 @@
           // Suppress expired dates even if the screen's metadata came from cache.
           var now = new Date(), today = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2) + '-' + ('0' + now.getDate()).slice(-2);
           if (d.next && d.next.d >= today && !(d.next.e === 1 && d.nextSeason && d.nextSeason.s === d.next.s)) {
-            schedule.appendChild(el('span', 'd-next fadein', N.t('nextEp') + ' · ⁦S' + d.next.s + 'E' + d.next.e + '⁩ · ' + fmtDate(d.next.d)));
+            schedule.appendChild(scheduleRow(N.t('nextEp'), 'S' + d.next.s + ' E' + d.next.e, d.next.d, now.getFullYear()));
           }
-          if (d.nextSeason && d.nextSeason.d >= today) schedule.appendChild(el('span', 'd-next fadein', N.t('nextSeason') + ' ' + d.nextSeason.s + ' · ' + fmtDate(d.nextSeason.d)));
+          if (d.nextSeason && d.nextSeason.d >= today) schedule.appendChild(scheduleRow(N.t('nextSeason'), 'S' + d.nextSeason.s, d.nextSeason.d, now.getFullYear()));
           if (schedule.firstChild) col.insertBefore(schedule, plot);
         }
         var bits = [];
         if (isSeries && d.status) bits.push([N.t('titleStatus'), statusText(d.status)]);
         if (!(post.info && post.info.time && post.info.time.default) && d.runtime) bits.push([N.t('runtime'), ui.duration(d.runtime)]);
         if (d.nets.length) bits.push([N.t('network'), d.nets.join(', ')]);
-        paintFacts(bits);
+        extraFacts = bits;
+        paintFacts();
         if (d.bd) {
           var tb = N.tmdb.img(d.bd, 'w1280'), cv = ui.coverUrl(post);
           if (!cv) { post._bd = tb; N.stage.show(post, { immediate: true }); }
@@ -763,8 +807,8 @@
             ci.src = cv;
           }
         }
-        paintCredits('cast', d.cast.map(function (p) { return { name: p.n, role: p.c, photo: N.tmdb.img(p.p, 'w185') }; }));
-        paintCredits('crew', d.crew.map(function (p) { return { name: p.n, role: p.j, photo: N.tmdb.img(p.p, 'w185') }; }));
+        paintCredits('cast', d.cast.map(function (p) { return { id: p.id, name: p.n, role: p.c, photo: N.tmdb.img(p.p, 'w185') }; }));
+        paintCredits('crew', d.crew.map(function (p) { return { id: p.id, name: p.n, role: p.j, photo: N.tmdb.img(p.p, 'w185') }; }));
         positionExtras();
         if (d.recs.length) {
           var recRow = null, got = {}, n = 0, queued = [];
@@ -780,7 +824,7 @@
                 recRow = xRowAdd('rec', N.t('moreLikeThis'), 396); queued.forEach(addRec); positionExtras(); return;
               }
               addRec(p);
-            });
+            }).catch(function () {});
           });
         }
       }
@@ -791,10 +835,12 @@
       if (tmOn) detailMetadata.then(function (d) { if (!dead && d) paintTmdb(d); }).catch(function () {});
       current.onPlayerClosed = function () {
         playB.lastChild.textContent = refreshResume();
+        paintFacts();
+        positionExtras();
         if (backToSheet && sheet) { backToSheet = false; openEps(N.player.index, true); return; } // same season, on the episode just played (or the one autoplay moved to)
         var t = lastFocus && document.body.contains(lastFocus) && lastFocus.offsetWidth > 0 ? lastFocus : playB; N.nav.focus(t, true);
       };
-      N.nav.focus(playB, true);
+      if (!N.nav.cur || !root.contains(N.nav.cur)) N.nav.focus(playB, true);
       if (params.autoplay) {
         if (items.length) play(startIdx, true); else N.toast(N.isLoggedIn() ? N.t('noStream') : N.t('playLogin'), 3500);
       } else if (params.showEpisodes) {
@@ -802,9 +848,138 @@
         else N.toast(N.isLoggedIn() ? N.t('noStream') : N.t('playLogin'), 3500);
       }
     }
-    var current = { destroy: function () { dead = true; clearTimeout(swT); if (sheetScope) { N.nav.popScope(); sheetScope = null; } } };
+    var current = { focusState: function () { return { credit: N.nav.cur && N.nav.cur._credit }; }, destroy: function () { dead = true; clearTimeout(swT); if (sheetScope) { N.nav.popScope(); sheetScope = null; } } };
     load();
     return current;
+  };
+
+  /* ================= Cast and crew filmography ================= */
+  S.person = function (root, params, restore) {
+    var person = params.person, source = params.source, dead = false, opening = false;
+    var selected = restore && restore.kind || 'all', titles = [], cards = [], tabs = [];
+    var resolved = Object.create(null), cols = 7;
+    N.stage.dim(0.9);
+    var header = el('div', 'person-header'), portrait = el('div', 'person-portrait');
+    var info = el('div', 'person-heading'), name = el('h1', '', person.name);
+    info.appendChild(el('div', 'person-label', N.t('filmography')));
+    var bio = el('p', 'person-bio');
+    bio.dir = 'auto';
+    info.appendChild(name); info.appendChild(bio);
+    header.appendChild(portrait); header.appendChild(info);
+    var layout = el('div', 'person-layout');
+    layout.appendChild(header); root.appendChild(layout);
+    function showPortrait(url) {
+      portrait.textContent = person.name.split(/\s+/).slice(0, 2).map(function (word) { return word.charAt(0); }).join('');
+      if (!url) return;
+      var img = el('img'); img.alt = '';
+      img.onload = function () { portrait.textContent = ''; portrait.appendChild(img); };
+      img.src = url;
+    }
+    showPortrait(person.photo);
+    var filters = el('div', 'person-filters');
+    var body = el('div', 'person-scroll scroll'), grid = el('div', 'person-grid catalog-posters');
+    var status = el('div', 'person-status'); status.setAttribute('role', 'status');
+    body.appendChild(status); body.appendChild(grid);
+    layout.appendChild(filters); layout.appendChild(body);
+    body.setAttribute('data-mv', '18');
+    var back = ui.btn(N.t('backToDetails'), function () { N.onBack(); }, 'person-back', 'back');
+    header.appendChild(back);
+    N.nav.focus(back, true);
+    back.onnav = function (dir) { if (dir === 'down') return tabs[0] || true; return false; };
+
+    function openTitle(item) {
+      if (opening) return;
+      var key = item.kind + item.id;
+      opening = true;
+      var focus = N.nav.cur;
+      status.textContent = N.t('findingCredit');
+      var request = resolved[key] ? Promise.resolve(resolved[key]) : N.tmdb.resolve(item, function () { return !dead; }, true);
+      request.then(function (post) {
+        if (dead || root.classList.contains('leave')) return;
+        opening = false;
+        status.textContent = '';
+        if (!post) { N.toast(N.t('creditUnavailable')); return; }
+        resolved[key] = post;
+        if (N.nav.cur === focus && !N.rail.open && !N.nav.scopes.length) N.go('details', { id: post.id });
+      }).catch(function () {
+        if (!dead) { opening = false; status.textContent = ''; N.toast(N.t('error') + '. ' + N.t('tryAgain')); }
+      });
+    }
+    function paint() {
+      cards.forEach(ui.unload);
+      cards = []; grid.innerHTML = ''; body.scrollTop = 0;
+      tabs.forEach(function (tab) {
+        tab.classList.toggle('cur', tab._kind === selected);
+        tab.setAttribute('aria-pressed', String(tab._kind === selected));
+      });
+      titles.filter(function (item) { return selected === 'all' || item.kind === selected; }).forEach(function (item, index) {
+        var picture = N.tmdb.img(item.pst, 'w342');
+        var cell = ui.cell({ title: { english: item.title }, image: { poster: { jpg: { medium: picture } } } });
+        var card = cell.card;
+        card._creditTitle = item.kind + item.id;
+        card.setAttribute('role', 'button');
+        card.setAttribute('aria-label', item.title);
+        cell.appendChild(el('div', 'archive-meta', (item.year ? item.year + ' · ' : '') + N.t(item.kind === 'tv' ? 'series' : 'movie')));
+        card.onclick = function () { openTitle(item); };
+        card.onnav = function (dir) {
+          return ui.gridNav(cards, index, cols, dir, function (edge) {
+            if (edge === 'up') return tabs.filter(function (tab) { return tab._kind === selected; })[0];
+            if (ui.step(edge) < 0) N.rail.enter();
+            return true;
+          });
+        };
+        card.onfocus2 = function () {
+          cards.slice(Math.max(0, index - cols), index + cols * 2).forEach(function (item) { ui.load(item); });
+        };
+        grid.appendChild(cell); cards.push(card);
+      });
+      cards.slice(0, cols * 2).forEach(function (card) { ui.load(card); });
+      status.textContent = cards.length ? '' : N.t('noPersonCredits');
+    }
+    function load() {
+      status.textContent = N.t('loading');
+      if (!N.tmdb.enabled()) {
+        status.textContent = N.t('tmdbTrendSetup');
+        return;
+      }
+      N.tmdb.personCredits(person, source, params.group).then(function (result) {
+        if (dead || root.classList.contains('leave')) return;
+        if (!result) { status.textContent = N.t('personNotFound'); return; }
+        name.textContent = result.name || person.name;
+        bio.textContent = result.bio || '';
+        if (!person.photo && result.photo) showPortrait(N.tmdb.img(result.photo, 'w185'));
+        titles = result.titles;
+        if (!titles.some(function (item) { return item.kind === selected; })) selected = 'all';
+        [['all', 'allCredits'], ['movie', 'movies'], ['tv', 'series']].forEach(function (entry) {
+          if (entry[0] !== 'all' && !titles.some(function (item) { return item.kind === entry[0]; })) return;
+          var tab = ui.pill(N.t(entry[1]), function () { if (selected !== entry[0]) { selected = entry[0]; paint(); } }, false);
+          tab._kind = entry[0];
+          tab.onnav = function (dir) {
+            if (dir === 'down') return cards[0] || true;
+            if (dir === 'up') return back;
+            return false;
+          };
+          filters.appendChild(tab); tabs.push(tab);
+        });
+        paint();
+        if (restore && restore.title && N.nav.cur === back && !N.rail.open && !N.nav.scopes.length) {
+          var previous = cards.filter(function (card) { return card._creditTitle === restore.title; })[0];
+          if (previous) N.nav.focus(previous);
+        }
+      }).catch(function () {
+        if (dead || root.classList.contains('leave')) return;
+        status.textContent = N.t('error') + '. ' + N.t('tryAgain');
+        var retry = ui.btn(N.t('retry'), function () {
+          retry.remove(); N.nav.focus(back, true); load();
+        });
+        filters.appendChild(retry); tabs = [retry];
+      });
+    }
+    load();
+    return {
+      destroy: function () { dead = true; cards.forEach(ui.unload); },
+      focusState: function () { return { kind: selected, title: N.nav.cur && N.nav.cur._creditTitle }; }
+    };
   };
 
   /* ================= Search ================= */
@@ -817,6 +992,7 @@
     var dead = false, seq = 0, timer = null, q = restore.query || '', swT = null;
     var kbLang = KB[restore.kbLang] ? restore.kbLang : (N.lang === 'fa' ? 'fa' : 'en');
     var restoreId = restore.resultId, resultCols = 4;
+    var resultPage = 0, totalPages = 0, resultsGeneration = 0, loadingMore = false;
     root.classList.add('search');
     N.stage.dim(0.72);
     var panel = el('div', 'panel'); root.appendChild(panel);
@@ -894,7 +1070,7 @@
     function paintQuery() { qt.textContent = q; ph.style.display = q ? 'none' : ''; }
     function type(c) { if (q.length < 60) { q += c; changed(); } }
     function changed() {
-      seq++; clearTimeout(swT); rg.classList.remove('sw');
+      seq++; restoreId = null; clearTimeout(swT); rg.classList.remove('sw');
       paintQuery();
       clearTimeout(timer); timer = setTimeout(run, 500);
     }
@@ -906,7 +1082,57 @@
     }
     document.addEventListener('keydown', onKeyDown);
 
-    function show(posts, header, msg) {
+    function appendResults(posts) {
+      posts.forEach(function (post) {
+        var i = resultCards.length, cell = ui.cell(post);
+        var year = post.info && post.info.year;
+        cell.appendChild(el('div', 'search-result-meta', (year ? year + ' · ' : '') + ui.typeLabel(post, false)));
+        cell.card.onclick = function () { N.go('details', { id: post.id }); };
+        resultCards.push(cell.card);
+        cell.card.onnav = function (dir) {
+          if (dir === 'down' && Math.floor(i / resultCols) === Math.floor((resultCards.length - 1) / resultCols)) {
+            loadMore(cell.card);
+            return true;
+          }
+          return ui.gridNav(resultCards, i, resultCols, dir, function (edge) {
+            return (edge === 'left' || edge === 'right') && ui.step(edge) < 0 ? returnKey() : true;
+          });
+        };
+        cell.card.onfocus2 = function () {
+          for (var k = Math.max(0, i - 4); k < Math.min(resultCards.length, i + 12); k++) ui.load(resultCards[k]);
+        };
+        rg.appendChild(cell);
+      });
+    }
+    function loadMore(from) {
+      if (loadingMore || resultsGeneration !== seq || resultPage >= totalPages) return;
+      var generation = seq, query = q.trim();
+      loadingMore = true;
+      function nextPage() {
+        return N.api.get('search', { query: query, streamonly: 0, page: resultPage + 1 }).then(function (r) {
+          if (dead || generation !== seq) return;
+          resultPage++;
+          totalPages = Number(r.pages) || totalPages;
+          var seen = Object.create(null);
+          resultCards.forEach(function (card) { seen[card._post.id] = true; });
+          var fresh = listed(r.posts).filter(function (post) {
+            if (seen[post.id]) return false;
+            seen[post.id] = true;
+            return true;
+          });
+          if (!fresh.length && resultPage < totalPages) return nextPage();
+          var firstNew = resultCards.length;
+          appendResults(fresh);
+          if (N.nav.cur === from && resultCards[firstNew] && !N.rail.open && !N.nav.scopes.length) N.nav.focus(resultCards[firstNew]);
+        });
+      }
+      nextPage().catch(function () {
+        if (!dead && generation === seq) N.toast(N.t('error') + '. ' + N.t('tryAgain'));
+      }).then(function () {
+        if (generation === seq) loadingMore = false;
+      });
+    }
+    function show(posts, header, msg, generation) {
       posts = listed(posts);
       clearTimeout(swT);
       if (document.body.classList.contains('calm')) { paintResults(); return; }
@@ -914,30 +1140,12 @@
       swT = setTimeout(paintResults, 110);
       function paintResults() {
         if (dead) return;
+        resultsGeneration = generation || 0;
         var restoreIndex = resultCards.indexOf(N.nav.cur);
         rg.innerHTML = ''; resultCards = []; rh.textContent = header;
         if (msg) { var m = el('div', 'nores', msg); m.style.flexBasis = '100%'; m.style.position = 'relative'; m.style.top = '0'; m.style.marginBottom = '24px'; rg.appendChild(m); }
-        posts.forEach(function (p, i) {
-          var cell = ui.cell(p);
-          var year = p.info && p.info.year;
-          cell.appendChild(el('div', 'search-result-meta', (year ? year + ' · ' : '') + ui.typeLabel(p, false)));
-          cell.card.onclick = function () { N.go('details', { id: p.id }); };
-          resultCards.push(cell.card);
-          cell.card.onnav = function (dir) {
-            return ui.gridNav(resultCards, i, resultCols, dir, function (edge) {
-              if (edge === 'left' || edge === 'right') {
-                if (ui.step(edge) < 0) return returnKey();
-              }
-              return true;
-            });
-          };
-          cell.card.onfocus2 = function () {
-            var lo = Math.max(0, i - 4), hi = Math.min(rg.children.length, i + 12);
-            for (var k = lo; k < hi; k++) { var cc = rg.children[k].card; if (cc) ui.load(cc); }
-          };
-          rg.appendChild(cell);
-        });
-        for (var k = 0; k < rg.children.length && k < 12; k++) if (rg.children[k].card) ui.load(rg.children[k].card);
+        appendResults(posts);
+        for (var k = 0; k < Math.min(resultCards.length, 12); k++) ui.load(resultCards[k]);
         rw.style.transition = 'none'; rw._ty = null; rw.style.transform = ''; void rw.offsetWidth; rw.style.transition = '';
         rg.classList.remove('sw');
         if (restoreId != null) {
@@ -959,29 +1167,47 @@
     }
     function run() {
       var qq = q.trim(); var my = ++seq;
+      loadingMore = false;
+      resultPage = totalPages = 0;
       if (!qq) { popular('', my); return; }
-      N.api.get('search', { query: qq, streamonly: 0, page: 1 }).then(function (r) {
+      var query = qq.toLowerCase(), posts = [];
+      function exact(post) {
+        var title = post.title || {};
+        return [title.english, title.local].some(function (name) { return typeof name === 'string' && name.trim().toLowerCase() === query; });
+      }
+      function fetchPage(page) {
+        return N.api.get('search', { query: qq, streamonly: 0, page: page }).then(function (r) {
+          if (dead || my !== seq) return;
+          resultPage = page;
+          totalPages = Number(r.pages) || 1;
+          var fresh = listed(r.posts);
+          if (page === 1) fresh = fresh.filter(exact).concat(fresh.filter(function (post) { return !exact(post); }));
+          fresh.forEach(function (post) {
+            if (!posts.some(function (other) { return String(other.id) === String(post.id); })) posts.push(post);
+          });
+          var restoringResult = restoreId != null && page < (restore.resultPage || 1) &&
+            !posts.some(function (post) { return String(post.id) === String(restoreId); });
+          if (page < totalPages && (restoringResult || !posts.length)) return fetchPage(page + 1);
+          if (!posts.length) { popular(N.t('nothingFor') + ' “' + qq + '”', my); return; }
+          show(posts, N.t('topResults'), '', my);
+        });
+      }
+      fetchPage(1).catch(function () {
         if (dead || my !== seq) return;
-        var posts = listed(r.posts), query = qq.toLowerCase();
-        if (!posts.length) { popular(N.t('nothingFor') + ' “' + qq + '”', my); return; }
-        function exact(post) {
-          var title = post.title || {};
-          return [title.english, title.local].some(function (name) { return typeof name === 'string' && name.trim().toLowerCase() === query; });
-        }
-        posts = posts.filter(exact).concat(posts.filter(function (post) { return !exact(post); }));
-        show(posts, N.t('topResults'), '');
-      }).catch(function (e) { if (!dead && my === seq) popular(N.t('error') + '. ' + N.t('tryAgain'), my); });
+        if (posts.length) {
+          show(posts, N.t('topResults'), '', my);
+        } else popular(N.t('error') + '. ' + N.t('tryAgain'), my);
+      });
     }
     layout(); paintQuery(); run();
     N.nav.focus(grid.firstChild, true);
     return {
-      focusState: function () { return { query: q, kbLang: kbLang, keyboardIndex: Array.prototype.indexOf.call(panel.querySelectorAll('.key'), returnKey()), resultId: N.nav.cur && N.nav.cur._post && N.nav.cur._post.id }; },
+      focusState: function () { return { query: q, kbLang: kbLang, resultPage: resultPage, keyboardIndex: Array.prototype.indexOf.call(panel.querySelectorAll('.key'), returnKey()), resultId: N.nav.cur && N.nav.cur._post && N.nav.cur._post.id }; },
       destroy: function () { dead = true; clearTimeout(timer); clearTimeout(swT); document.removeEventListener('keydown', onKeyDown); }
     };
   };
 
   /* ================= Archive ================= */
-  var menuCache = null;
   S.archive = function (root, params, restore) {
     if (params && params.slug) return archiveList(root, params, restore);
     var dead = false, entries = [];
@@ -991,19 +1217,18 @@
     var sk = el('div', 'msg', N.t('loading')); sk.style.cssText = 'position:absolute;top:300px;left:184px'; root.appendChild(sk);
     function show(m) {
       if (dead) return; root.removeChild(sk);
-      box.appendChild(el('div', 'ah head', N.t('archive')));
-      box.appendChild(el('div', 'arch-sub head', N.lang === 'fa' ? 'داستان بعدی‌تان را پیدا کنید.' : 'Find your next great story.'));
+      box.appendChild(ui.collectionHeading(N.t('archive'), 'archive', N.t('archiveIntro')));
       var cats = el('div', 'cats'); box.appendChild(cats);
       (m.categories || []).forEach(function (c) {
         var button = ui.pill(c.name, function () { N.go('archive', { slug: c.slug, name: c.name }); }, false);
-        var icon = ui.icon(/series|tv/.test(c.slug) ? 'series' : /anime/.test(c.slug) ? 'anime' : 'movies');
+        var icon = ui.icon(/anime/.test(c.slug) ? 'anime' : /series|tv/.test(c.slug) ? 'series' : 'movies');
         icon.setAttribute('aria-hidden', 'true'); button.insertBefore(icon, button.firstChild); cats.appendChild(button); entries.push(button);
       });
       [['movies', 'movie', 'trendingMovies'], ['series', 'tv', 'trendingSeries']].forEach(function (section) {
         var button = ui.pill(N.t(section[2]), function () {
           N.go('archive', { slug: section[0], trending: section[1], name: N.t(section[2]) });
         }, false);
-        var icon = ui.icon('anime'); icon.setAttribute('aria-hidden', 'true');
+        var icon = ui.icon('trending'); icon.setAttribute('aria-hidden', 'true');
         button.insertBefore(icon, button.firstChild); cats.appendChild(button); entries.push(button);
       });
       box.appendChild(el('div', 'sec-h', N.t('genres')));
@@ -1021,41 +1246,67 @@
       });
       N.nav.focus(entries[restore && restore.entry] || entries[0], true);
     }
-    if (menuCache) show(menuCache);
-    else N.api.get('menu').then(function (m) { menuCache = m; show(m); }).catch(function (e) { if (!dead) errorView(root, e, function () { N.go('archive', {}, { replace: true }); }); });
+    catalogueRequest('', '', 1).then(show).catch(function (e) { if (!dead) errorView(root, e, function () { N.go('archive', {}, { replace: true }); }); });
     return { destroy: function () { dead = true; }, focusState: function () { return { entry: entries.indexOf(N.nav.cur) }; } };
   };
 
-  // Brief, bounded in-memory catalogue cache, isolated by session and filters.
-  var archivePages = {}, archivePageKeys = [], ARCHIVE_TTL = 90000;
-  function rememberArchive(key, source, result) {
-    archivePages[key] = {time:Date.now(),session:N.session,source:source,result:result};
-    var i = archivePageKeys.indexOf(key); if (i >= 0) archivePageKeys.splice(i, 1);
-    archivePageKeys.push(key);
-    while (archivePageKeys.length > 24) delete archivePages[archivePageKeys.shift()];
-  }
   var SORTS = [['update', 'updated'], ['favorite', 'popular']];
+  var archivePages = Object.create(null), archivePageKeys = [], archivePending = Object.create(null), ARCHIVE_TTL = 90000;
+  function archiveSort(params, restore) {
+    if (params.trending) return 'favorite';
+    var sort = (restore && restore.sort) || N.store.get('archiveSort.' + params.slug, 'update');
+    return SORTS.some(function (option) { return option[0] === sort; }) ? sort : 'update';
+  }
+  // The year filter runs locally, so every year can reuse the same server page.
+  function catalogueRequest(slug, sort, page) {
+    var key = JSON.stringify([N.lang, slug, sort, page]), session = N.session, source = N.api.get;
+    var cached = archivePages[key], pending = archivePending[key], index;
+    if (cached && cached.session === session && cached.source === source && Date.now() - cached.time < ARCHIVE_TTL) {
+      index = archivePageKeys.indexOf(key);
+      archivePageKeys.splice(index, 1); archivePageKeys.push(key);
+      return Promise.resolve(cached.result);
+    }
+    if (pending && pending.session === session && pending.source === source) return pending.promise;
+    var request = {session: session, source: source};
+    archivePending[key] = request;
+    var args = slug ? {slugs: slug, streamonly: 1, page: page, orderby: sort, order: 'desc'} : undefined;
+    request.promise = N.api.get(slug ? 'archive' : 'menu', args).then(function (result) {
+      if (archivePending[key] === request) {
+        delete archivePending[key];
+        if (N.session === session && N.api.get === source && result && (!slug || Array.isArray(result.posts))) {
+          archivePages[key] = {session: session, source: source, time: Date.now(), result: result};
+          index = archivePageKeys.indexOf(key); if (index >= 0) archivePageKeys.splice(index, 1);
+          archivePageKeys.push(key);
+          while (archivePageKeys.length > 24) delete archivePages[archivePageKeys.shift()];
+        }
+      }
+      return result;
+    }, function (error) {
+      if (archivePending[key] === request) delete archivePending[key];
+      throw error;
+    });
+    return request.promise;
+  }
+  S.preloadArchive = function (params, restore) {
+    if (!params.trending) return catalogueRequest(params.slug || '', params.slug ? archiveSort(params, restore) : '', 1);
+  };
   function archiveList(root, params, restore) {
     var trending = params.trending, weeklyPosts = null;
     var availableSorts = trending ? [] : SORTS;
     var sortKey = 'archiveSort.' + params.slug, yearKey = 'archiveYear.' + (trending ? 'trending.' : '') + params.slug;
-    var year = String((restore && restore.year) || N.store.get(yearKey, '')), yearMenu = null;
+    var year = String(restore && restore.year !== undefined ? restore.year : N.store.get(yearKey, '')), yearMenu = null;
     if (!/^\d{4}$/.test(year)) year = '';
-    var dead = false, page = 1, pages = 1, loading = false, failedPage = 0, cells = [], seen = {}, skels = [], sort = (restore && restore.sort) || N.store.get(sortKey, 'update'), wantIdx = restore && restore.idx || 0, restoring = !!(restore && restore.idx > 0), gen = 0, COLS = 7;
-    if (sort === 'year' || sort === 'date' || sort === 'digital') { sort = 'update'; N.store.set(sortKey, sort); }
-    if (trending) sort = 'favorite';
-    else if (!availableSorts.some(function (s) { return s[0] === sort; })) sort = 'update';
+    var dead = false, page = 1, pages = 1, loading = false, failedPage = 0, cells = [], seen = {}, skels = [], sort = archiveSort(params, restore), wantIdx = restore && restore.idx || 0, restoring = !!(restore && restore.idx > 0), gen = 0, COLS = 7;
     root.classList.add('archive', 'gridpage'); N.stage.dim(0.72);
     var box = el('div', 'arch'); root.appendChild(box);
-    var head = el('div', 'head ah'); head.textContent = params.name || params.slug; box.appendChild(head);
-    var subtitle = el('div', 'arch-sub head', trending ? N.t('tmdbWeekly') : (N.lang === 'fa' ? 'مجموعه را کشف کنید.' : 'Explore the collection.'));
-    box.appendChild(subtitle);
+    var headingIcon = trending ? 'trending' : (/^(movies|series|anime)$/.test(params.slug) ? params.slug : 'archive');
+    box.appendChild(ui.collectionHeading(params.name || params.slug, headingIcon, trending ? N.t('tmdbWeekly') : N.t(headingIcon + 'Intro')));
     var sorts = el('div', 'sorts head'); box.appendChild(sorts);
     var filters = el('div', 'archive-filters head'); box.appendChild(filters);
     var yearButton = ui.pill('', openYears, false); yearButton.classList.add('year-filter'); sorts.appendChild(yearButton);
     yearButton.setAttribute('aria-haspopup', 'listbox');
     if (trending) yearButton.disabled = true;
-    yearButton.onnav = function (dir) { if (dir === 'down') return cells[0] ? cells[0].card : true; if (dir === 'up') return true; return false; };
+    yearButton.onnav = function (dir) { if (dir === 'down') return cells[0] ? cells[0].card : older.disabled || older.style.display === 'none' ? true : older; if (dir === 'up') return true; return false; };
     function closeYears(focus) {
       if (!yearMenu) return false; N.nav.popScope(); root.removeChild(yearMenu); yearMenu = null; yearButton.setAttribute('aria-expanded', 'false');
       if (focus) N.nav.focus(yearButton, true); return true;
@@ -1084,7 +1335,7 @@
       yearMenu.reveal = function (e) { var top = e.offsetTop, bottom = top + e.offsetHeight; if (top < yearMenu.scrollTop) yearMenu.scrollTop = top; else if (bottom > yearMenu.scrollTop + yearMenu.clientHeight) yearMenu.scrollTop = bottom - yearMenu.clientHeight; };
       yearButton.setAttribute('aria-expanded', 'true'); N.nav.pushScope(yearMenu); N.nav.focus(buttons[Math.max(0, values.indexOf(year))]);
     }
-    var grid = el('div', 'ggrid'); box.appendChild(grid);
+    var grid = el('div', 'ggrid catalog-posters'); box.appendChild(grid);
     box.reveal = function (e) {
       var idx=e._gridIndex,ty;
       if(idx!==undefined){ty=-Math.max(0,250+Math.floor(idx/COLS)*386-260);if(box._ty!==ty){box._ty=ty;box.style.transform='translateY('+ty+'px)';}}
@@ -1100,7 +1351,7 @@
         if(dir==='down'&&older.style.display!=='none'&&Math.floor(idx/COLS)===Math.floor((cells.length-1)/COLS))return older;
         return ui.gridNav({length:cells.length,_at:viewport.at},idx,COLS,dir,function(edge){if(edge==='up')return sorts.firstChild;if((edge==='left'||edge==='right')&&ui.step(edge)<0)N.rail.enter();return true;});
       };
-      c.onfocus2=function(){viewport.focus(idx);if(Math.floor(idx/COLS)>=Math.ceil(cells.length/COLS)-2&&page<pages&&!loading&&!failedPage){page++;load();}};
+      c.onfocus2=function(){viewport.focus(idx);if(nearEnd(idx)&&page<pages&&!loading&&!failedPage){page++;load();}};
       return cell;
     }});
     availableSorts.forEach(function (s) {
@@ -1109,7 +1360,7 @@
     });
     var older = ui.pill(N.t('olderReleases'), function () { if (loading || (!failedPage && page >= pages)) return; page = failedPage || page + 1; failedPage = 0; load(); }, false);
     older.classList.add('archive-more'); older.style.display = 'none'; filters.appendChild(older);
-    older.onnav = function (dir) { if (dir === 'down') return cells.length ? cells[cells.length - 1].card : true; if (dir === 'up') return true; return false; };
+    older.onnav = function (dir) { if (dir === 'down') return cells.length ? cells[cells.length - 1].card : true; if (dir === 'up') return yearButton; return false; };
     function paint() {
       yearButton.textContent = N.t('year') + ': ' + (year || N.t('allYears')) + ' ▾';
       older.textContent = N.t('loadMore');
@@ -1122,7 +1373,18 @@
       gen++; loading = false; failedPage = 0; page = 1; pages = 1; older.style.display = 'none'; viewport.clear(); clearSkels(); var messages=grid.querySelectorAll('.msg'); for(var m=0;m<messages.length;m++)messages[m].remove(); cells = []; seen = {}; skels = []; box.style.transition = 'none'; box._ty = null; box.style.transform = ''; void box.offsetWidth; box.style.transition = ''; box.classList.remove('scrolled');
       wantIdx = 0; restoring = false; load();
     }
-    function releaseYear(post) { return String(post._trendYear || (post.info && post.info.year) || ''); }
+    function releaseYear(post) {
+      var value = String(post._trendYear || (post.info && post.info.year) || '').trim();
+      var match = /^(\d{4})(?:\D|$)/.exec(value);
+      return match ? match[1] : value;
+    }
+    function nearEnd(idx) {
+      var rows = Math.ceil(cells.length / COLS);
+      return rows <= 1 || Math.floor(idx / COLS) >= Math.max(1, rows - 2);
+    }
+    function focusArchive(target, noScroll) {
+      if (!yearMenu && !N.rail.open && !N.nav.scopes.length && !N.nav.locked) N.nav.focus(target, noScroll);
+    }
     function appendPosts(posts) {
       var first=cells.length===0, previousCount=cells.length, fromMore=N.nav.cur===older;
       posts.forEach(function(p){
@@ -1130,27 +1392,23 @@
         Object.defineProperty(model,'card',{get:function(){return viewport.at(idx);}});cells.push(model);
       });
       viewport.setCount(cells.length);
-      if(fromMore && cells.length > previousCount) N.nav.focus(cells[previousCount].card);
-      if(first&&cells.length&&!restoring&&!yearMenu && !(trending && N.nav.cur === yearButton)) N.nav.focus(cells[0].card,true);
+      if(fromMore && cells.length > previousCount) focusArchive(cells[previousCount].card);
+      if(first&&cells.length&&!restoring&&!(trending && N.nav.cur === yearButton)) focusArchive(cells[0].card,true);
     }
     function load(scanned) {
       scanned = scanned || 0;
-      if (loading) return; loading = true; var my = gen; addSkels(page === 1 ? 14 : 7);
-      older.disabled = true; older.textContent = N.t('loading');
-      var cacheKey = [N.lang, params.slug, sort, year, page].join('|');
-      var source = N.api.get, requestSession = N.session;
-      var cached = archivePages[cacheKey];
-      var hit = cached && cached.session === N.session && cached.source === source && Date.now() - cached.time < ARCHIVE_TTL;
-      function catalogRequest() {
-        return hit ? Promise.resolve(cached.result) :
-          N.api.get('archive', { slugs: params.slug, streamonly: 1, page: page, orderby: sort, order: 'desc' });
-      }
+      if (loading) return; loading = true; var my = gen;
+      var skeletonTimer = setTimeout(function () {
+        if (!dead && my === gen && !cells.length && !skels.length) addSkels(14);
+      }, 120);
+      older.disabled = true; older.textContent = N.t(year && !trending && !cells.length ? 'findingYearMatches' : 'loading');
       var request;
-      if (!trending) request = catalogRequest();
+      if (!trending) request = catalogueRequest(params.slug, sort, page);
       else if (weeklyPosts) request = Promise.resolve({ posts: weeklyPosts, pages: 1 });
       else if (!N.tmdb.enabled()) request = Promise.reject(new Error('TMDB disabled'));
       else request = N.tmdb.weeklyTrending(trending, function () { return !dead && my === gen; });
       request.then(function (r) {
+        clearTimeout(skeletonTimer);
         if (dead || my !== gen) return;
         if (trending) {
           weeklyPosts = listed(r.posts);
@@ -1158,30 +1416,59 @@
           if (year && !weeklyPosts.some(function (post) { return releaseYear(post) === year; })) {
             year = ''; N.store.del(yearKey); paint();
           }
-        } else if (!hit && N.session === requestSession && r && r.posts) rememberArchive(cacheKey, source, r);
-        loading = false; clearSkels(); older.disabled = false; older.textContent = N.t('loadMore');
+        }
         var posts = listed(r.posts).filter(function (p) { return !year || releaseYear(p) === year; });
-        older.style.display = !posts.length && page < r.pages ? '' : 'none';
+        pages = Number(r.pages) || 1;
+        var findingFirstMatch = year && !trending && !cells.length;
+        if (!posts.length && page < pages && (findingFirstMatch || scanned < 2)) {
+          loading = false;
+          page++;
+          if (findingFirstMatch && scanned >= 2) {
+            older.style.display = '';
+            // Keep the first-load placeholders stable while scanning successive pages.
+            if (!skels.length) addSkels(14);
+          }
+          load(scanned + 1);
+          return;
+        }
+        loading = false; clearSkels(); older.disabled = false; older.textContent = N.t('loadMore');
+        older.style.display = !posts.length && page < pages ? '' : 'none';
         var empty = grid.querySelector('.digital-empty'); if (empty) grid.removeChild(empty);
         var first = cells.length === 0;
-        pages = r.pages || 1;
-        if (!posts.length && page < pages && scanned < 2) { page++; load(scanned + 1); return; }
         appendPosts(posts);
-        if (!posts.length) {
-          var message = el('div', 'digital-empty msg', N.t(trending ? 'tmdbNoMatches' : 'noMatches')); grid.appendChild(message);
-          if (page < pages) N.nav.focus(older, true);
+        if (!posts.length && !cells.length) {
+          var message = el('div', 'digital-empty msg', N.t(trending ? 'tmdbNoMatches' : year ? 'noYearMatches' : 'noMatches')); grid.appendChild(message);
+        }
+        if (!posts.length && page < pages) focusArchive(older, true);
+        if (!posts.length && page >= pages && N.nav.cur === older) {
+          focusArchive(cells.length ? cells[cells.length - 1].card : yearButton);
         }
 
-        if (first && !cells.length && !restoring && !yearMenu) N.nav.focus(cells[0] ? cells[0].card : (older.style.display !== 'none' ? older : sorts.firstChild), true);
+        if (first && !cells.length && !restoring && !yearMenu) focusArchive(cells[0] ? cells[0].card : (older.style.display !== 'none' ? older : sorts.firstChild), true);
         if (restoring) {
-          if (wantIdx < cells.length) { restoring = false; instant(root, function () { N.nav.focus(cells[wantIdx].card); }); }
-          else if (page < pages) { page++; load(); } else { restoring = false; N.nav.focus(cells[0] ? cells[0].card : sorts.firstChild, true); }
+          if (wantIdx < cells.length) { restoring = false; instant(root, function () { focusArchive(cells[wantIdx].card); }); }
+          else if (page < pages) { page++; load(); } else { restoring = false; focusArchive(cells[0] ? cells[0].card : sorts.firstChild, true); }
         }
         if (!restoring && !loading && page < pages && N.nav.cur && grid.contains(N.nav.cur)) {
           var at = N.nav.cur._gridIndex;
-          if (at >= 0 && Math.floor(at / COLS) >= Math.ceil(cells.length / COLS) - 2) { page++; load(); }
+          if (at >= 0 && nearEnd(at)) { page++; load(); }
         }
-      }).catch(function (e) { if (!dead && my === gen) { loading = false; clearSkels(); older.disabled = false; if (!cells.length) { var notice = el('div', 'archive-error msg', trending ? N.t(N.tmdb.enabled() ? 'tmdbTrendError' : 'tmdbTrendSetup') : N.t('error') + '. ' + N.t('tryAgain')); grid.appendChild(notice); var retry = ui.pill(N.t('retry'), function () { if (notice.parentNode) grid.removeChild(notice); reset(); }, false); notice.appendChild(retry); N.nav.focus(retry, true); } else { failedPage = page; older.textContent = N.t('retry'); older.style.display = ''; N.toast(N.t('error') + '. ' + N.t('tryAgain')); } } });
+      }).catch(function () {
+        clearTimeout(skeletonTimer);
+        if (dead || my !== gen) return;
+        loading = false; clearSkels(); older.disabled = false;
+        if (!cells.length) {
+          older.style.display = 'none';
+          var notice = el('div', 'archive-error msg', trending ? N.t(N.tmdb.enabled() ? 'tmdbTrendError' : 'tmdbTrendSetup') : N.t('error') + '. ' + N.t('tryAgain'));
+          grid.appendChild(notice);
+          var retry = ui.pill(N.t('retry'), function () { notice.remove(); N.nav.focus(yearButton, true); load(); }, false);
+          retry.onnav = function (dir) { return dir === 'up' ? yearButton : false; };
+          notice.appendChild(retry); focusArchive(retry, true);
+        } else {
+          failedPage = page; older.textContent = N.t('retry'); older.style.display = '';
+          N.toast(N.t('error') + '. ' + N.t('tryAgain'));
+        }
+      });
     }
     load();
     return {
@@ -1277,7 +1564,61 @@
         p.appendChild(info(N.t('version'), N.config.version));
         p.appendChild(info(N.t('unofficial'), ''));
         p.appendChild(info(N.t('apiHost'), (N.api.host || '').replace(/^https?:\/\//, '').replace(/\/api.*$/, '')));
-        p.appendChild(info(N.t('tmdb'), N.tmdb.mock() ? N.t('tmdbMock') : (N.tmdb.token() ? N.t('tmdbOn') : N.t('tmdbOff'))));
+        var currentToken = N.tmdb.token();
+        var status = info(N.t('tmdb'), N.t(N.tmdb.mock() ? 'tmdbMock' : (currentToken ? 'tmdbChecking' : 'tmdbOff')));
+        var statusValue = status.querySelector('.v');
+        statusValue.setAttribute('aria-live', 'polite');
+        p.appendChild(status);
+        function validationError(error) {
+          return N.t(error.status === 401 || error.status === 403 ? 'tmdbRejected' : 'tmdbUnavailable');
+        }
+        var validation = 0;
+        function checkSavedToken() {
+          if (!currentToken || N.tmdb.mock()) return;
+          var check = ++validation;
+          N.tmdb.validateToken(currentToken).then(function () {
+            if (check === validation) statusValue.textContent = N.t('tmdbOn');
+          }, function (error) {
+            if (check === validation) statusValue.textContent = validationError(error);
+          });
+        }
+        checkSavedToken();
+        var tokenRow = el('div', 'orow tmdb-token-row');
+        var input = el('input', 'f tmdb-token-input');
+        var tokenLabel = N.t('tmdbTokenLabel');
+        input.type = 'password';
+        input.placeholder = tokenLabel;
+        input.setAttribute('aria-label', tokenLabel);
+        input.autocomplete = 'off';
+        input.autocapitalize = 'none';
+        function saveToken() {
+          var token = input.value.trim().replace(/^Bearer\s+/i, '');
+          if (!token || save.disabled) return;
+          var check = ++validation;
+          save.disabled = true;
+          statusValue.textContent = N.t('tmdbChecking');
+          N.tmdb.validateToken(token).then(function () {
+            if (dead || !root.contains(status) || check !== validation) return;
+            N.tmdb.setToken(token);
+            N.rerender();
+          }).catch(function (error) {
+            if (dead || !root.contains(status) || check !== validation) return;
+            statusValue.textContent = validationError(error);
+            save.disabled = false;
+          });
+        }
+        input.onenter = function () { N.nav.focus(save, true); };
+        var save = ui.btn(N.t('tmdbSaveToken'), saveToken);
+        tokenRow.appendChild(input);
+        tokenRow.appendChild(save);
+        p.appendChild(tokenRow);
+        if (N.tmdb.token()) p.appendChild(action(N.t('tmdbRemoveToken'), function () {
+          N.confirm({ title: N.t('tmdbRemoveToken'), ok: N.t('tmdbRemoveToken'), onOk: function () {
+            validation++;
+            try { N.tmdb.setToken(''); } catch (error) { N.toast(N.t('error')); return; }
+            N.rerender();
+          } });
+        }));
         if (N.tmdb.enabled()) {
           p.appendChild(action(N.t('clearCache'), function () { N.tmdb.clearCache(); N.toast(N.t('cleared')); }));
           p.appendChild(el('div', 'note', N.t('tmdbCredit')));

@@ -424,10 +424,6 @@ html[dir=rtl] .nores{left:auto;right:6px}
 
 /* ---------- archive ---------- */
 .arch{position:absolute;left:0;top:0;width:1920px;will-change:transform;transition:transform var(--d-move) var(--e-out)}
-.arch .ah{position:absolute;top:60px;left:var(--start);font-size:var(--t-xl);font-weight:700;line-height:1.3;white-space:nowrap}
-html[dir=rtl] .arch .ah{left:auto;right:var(--start)}
-.arch .ah small{font-size:var(--t-body);font-weight:400;color:var(--text-2);margin-left:20px}
-html[dir=rtl] .arch .ah small{margin-left:0;margin-right:20px}
 .arch .sorts{position:absolute;top:66px;right:96px;display:flex}
 html[dir=rtl] .arch .sorts{right:auto;left:96px}
 .arch .sorts .pill+.pill{margin-left:12px}
@@ -619,6 +615,8 @@ html[dir=rtl] #player-eps{-webkit-mask-image:none}
 .episode-card::before{z-index:1;opacity:1;background:linear-gradient(to top,rgba(0,0,0,.9),rgba(0,0,0,.38));pointer-events:none}
 .episode-card .en,.episode-card .et,.episode-card .ed,.episode-card .np{z-index:2;color:var(--text-1);text-shadow:0 1px 4px #000}
 .episode-card .en{font-size:38px}
+.ep .en.episode-label{top:60px;right:20px;font-size:24px;font-weight:700;line-height:1.25;overflow-wrap:break-word}
+html[dir=rtl] .ep .en.episode-label{left:20px}
 .episode-card.focus{color:var(--text-1);border-color:var(--focus);transform:scale(1.035)}
 .episode-card.focus::after{inset:0;z-index:3;border:3px solid var(--focus);border-radius:inherit}
 .episode-card .ed,.episode-card .np{color:var(--text-2)}
@@ -686,8 +684,6 @@ html[dir=rtl] .logo{object-position:right bottom}
 .d-tag.in{opacity:1}
 .d-cast.fadein,.meta .fadein,.d-eyebrow .fadein{animation:fi 400ms var(--e-out) backwards}
 .meta .tmdb{border:2px solid var(--text-3);border-radius:8px;padding:2px 12px;font-size:var(--t-cap);font-weight:600;color:var(--text-1);line-height:1.3}
-.d-next{display:inline-block;margin-left:16px;padding:0 14px;height:36px;line-height:36px;border-radius:8px;background:var(--accent);color:var(--accent-ink);font-size:var(--t-cap);font-weight:700;vertical-align:top}
-html[dir=rtl] .d-next{margin-left:0;margin-right:16px}
 .card.k-face{width:180px;height:262px;background:none}
 .card.k-face::before{display:none}
 .card.k-face::after{top:auto;right:auto;bottom:auto;left:auto;left:5px;top:-5px;width:170px;height:170px;border-radius:50%}
@@ -752,10 +748,11 @@ html[dir=rtl] .year-menu{right:auto;left:96px}
 .year-menu .pill{display:flex;width:100%;margin:4px 0;justify-content:center}
 
 /* Announced episode/season dates have their own space below the metadata. */
-.d-schedule{display:flex;flex-direction:column;align-items:flex-start;margin-top:12px}
-.d-schedule .d-next{margin:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.d-schedule .d-next+.d-next{margin-top:6px}
-html[dir=rtl] .d-schedule .d-next{margin-right:0}
+.d-schedule{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:12px}
+.d-next{display:flex;align-items:center;gap:14px;padding:6px 14px;max-width:100%;border:1px solid var(--glass-edge);border-radius:14px;background:var(--button-dark-glass);color:var(--text-1);font-size:22px;line-height:1.3}
+.d-next-label{font-weight:600}
+.d-next-episode{padding:3px 8px;border-radius:6px;background:var(--button-selected-glass);font-size:20px;font-weight:600;white-space:nowrap}
+.d-next-date{color:var(--text-2);white-space:nowrap}
 
 /* Sheets stay painted until their exit completes. Focus is released by the controller. */
 .det .sheet-eps,#player-menu,#player-eps{

@@ -5,7 +5,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parent
 release=root.parent/'releases';release.mkdir(exist_ok=True)
 ET.parse(root/'web/config.xml')
-for name,base,files in [('30nama-TV-1.6.46-unsigned.wgt',root/'web',list((root/'web').rglob('*'))),('30nama-TV-1.6.46-TizenBrew.zip',root,list((root/'web').rglob('*'))+[root/'package.json',root/'LICENSE'])]:
+for name,base,files in [('30nama-TV-1.6.64-unsigned.wgt',root/'web',list((root/'web').rglob('*'))),('30nama-TV-1.6.64-TizenBrew.zip',root,list((root/'web').rglob('*'))+[root/'package.json',root/'LICENSE'])]:
  target=release/name
  with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as z:
   for f in sorted(files):

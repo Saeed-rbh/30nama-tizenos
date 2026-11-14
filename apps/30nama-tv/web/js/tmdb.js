@@ -6,10 +6,17 @@
   var API = 'https://api.themoviedb.org/3', IMG = 'https://image.tmdb.org/t/p/';
   var HR = 3600 * 1000;
   var TTL = { details: 168 * HR, trend: 6 * HR, match: 168 * HR, miss: 24 * HR, res: 168 * HR };
-  var PFX = 'tc3.'; // Invalidate earlier permissive title matches and normalized metadata.
+  var PFX = 'tc3.', cacheGeneration = 0; // Invalidate earlier permissive title matches and normalized metadata.
 
   function lsRaw(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-  T.token = function () { return String(lsRaw('tmdbToken') || N.config.tmdbToken || '').replace(/^\s+|\s+$/g, ''); };
+  T.token = function () {
+    var saved = lsRaw('tmdbToken');
+    return String(saved === null ? (N.config.tmdbToken || '') : saved).trim();
+  };
+  T.setToken = function (token) {
+    localStorage.setItem('tmdbToken', token.trim());
+    T.clearCache();
+  };
   T.mock = function () { return lsRaw('tmdbMock') === '1'; };
   T.enabled = function () { return T.mock() || !!T.token(); };
   T.img = function (path, size) { return path ? IMG + (size || 'w500') + path : ''; };
@@ -44,7 +51,8 @@
     try { localStorage.setItem('n30.' + PFX + key, s); } catch (x) { prune(); try { localStorage.setItem('n30.' + PFX + key, s); } catch (y) {} }
   }
   T.clearCache = function () {
-    mem = {}; memKeys = [];
+    cacheGeneration++;
+    mem = {}; memKeys = []; inflight = {}; rin = {}; feeds = {};
     try {
       var del = [];
       for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf('n30.' + PFX) === 0) del.push(k); }
@@ -76,14 +84,25 @@
     if ((m = /^\/(movie|tv)\/\d+/.exec(path))) return 'details_' + m[1];
     return 'empty';
   }
-  function rq(path, params) {
-    if (T.mock()) {
+  function rq(path, params, token) {
+    if (token === undefined && T.mock()) {
       return timeout(fetch('tools/fixtures/' + mockFile(path) + '.json').then(function (r) { if (!r.ok) throw new Error('fixture ' + r.status); return r.json(); }), 8000);
     }
     var q = qs(params);
-    return timeout(fetch(API + path + (q ? '?' + q : ''), { headers: { Authorization: 'Bearer ' + T.token(), Accept: 'application/json' } })
-      .then(function (r) { if (!r.ok) throw new Error('tmdb ' + r.status); return r.json(); }), 15000);
+    return timeout(fetch(API + path + (q ? '?' + q : ''), { headers: { Authorization: 'Bearer ' + (token === undefined ? T.token() : token), Accept: 'application/json' } })
+      .then(function (r) { if (!r.ok) {
+          var error = new Error('tmdb ' + r.status);
+          error.status = r.status;
+          throw error;
+        }
+        return r.json(); }), 15000);
   }
+  // Validate directly so cached metadata cannot make a rejected token look connected.
+  T.validateToken = function (token) {
+    return rq('/configuration', null, token).then(function (result) {
+      if (!result || !result.images) throw new Error('Invalid TMDB configuration response');
+    });
+  };
   var inflight = {};
   // o: {ttl, slim(json), schema} (schema versions only the local normalized cache) ; the slimmed value is what is cached and returned
   T.get = function (path, params, o) {
@@ -91,9 +110,17 @@
     var c = cget(key, o.ttl || TTL.details);
     if (c) return Promise.resolve(c.v);
     if (inflight[key]) return inflight[key];
+    var generation = cacheGeneration;
     var p = rq(path, params).then(function (j) {
-      delete inflight[key]; var v = o.slim ? o.slim(j) : j; cput(key, v); return v;
-    }, function (e) { delete inflight[key]; throw e; });
+      if (generation !== cacheGeneration) throw new Error('TMDB cache changed');
+      delete inflight[key];
+      var v = o.slim ? o.slim(j) : j;
+      cput(key, v);
+      return v;
+    }, function (e) {
+      if (generation === cacheGeneration) delete inflight[key];
+      throw e;
+    });
     inflight[key] = p; return p;
   };
 
@@ -130,6 +157,51 @@
     };
   }
 
+  T.personCredits = function (person, source, group) {
+    function sameName(name) { return String(name || '').trim().toLowerCase() === person.name.trim().toLowerCase(); }
+    var identify = person.id ? Promise.resolve(person.id) : T.details(source).then(function (details) {
+      if (details) {
+        var credits = details[group] || [];
+        var matches = credits.filter(function (credit) { return credit.id && sameName(credit.n); });
+        if (matches.length && matches.every(function (credit) { return credit.id === matches[0].id; })) return matches[0].id;
+        if (matches.length) return null;
+      }
+      return T.get('/search/person', { query: person.name, language: 'en-US' }, { ttl: TTL.details }).then(function (result) {
+        var matches = (result.results || []).filter(function (candidate) { return !candidate.adult && sameName(candidate.name); });
+        if (details) {
+          matches = matches.filter(function (candidate) {
+            return (candidate.known_for || []).some(function (title) { return title.id === details.id && title.media_type === details.kind; });
+          });
+        }
+        return matches.length === 1 ? matches[0].id : null;
+      });
+    });
+    return identify.then(function (id) {
+      if (!id) return null;
+      return T.get('/person/' + id, { language: 'en-US', append_to_response: 'combined_credits' }, {
+        ttl: TTL.details, schema: 'filmography2', slim: function (result) {
+          var credits = result.combined_credits || {}, seen = Object.create(null), titles = [];
+          (credits.cast || []).concat(credits.crew || []).forEach(function (credit) {
+            if (credit.adult || !credit.id || (credit.media_type !== 'movie' && credit.media_type !== 'tv')) return;
+            var item = slimItem(credit);
+            var key = item.kind + item.id;
+            if (seen[key] || !item.title) return;
+            seen[key] = true;
+            titles.push(item);
+          });
+          titles.sort(function (a, b) { return b.pop - a.pop || b.year - a.year; });
+          var bio = typeof result.biography === 'string' ? result.biography.trim().replace(/\s+/g, ' ') : '';
+          var excerpt = Array.from(bio);
+          if (excerpt.length > 260) {
+            var short = excerpt.slice(0, 260).join('');
+            bio = short.replace(/\s+\S*$/, '') + '…';
+          }
+          return { name: result.name, photo: result.profile_path, bio: bio, titles: titles };
+        }
+      });
+    });
+  };
+
   /* ---------- 30nama post -> TMDB id ---------- */
   function isTv(post) { return !!(post.options && post.options.is_series); }
   function postYear(post) { return +(post.info && post.info.year) || 0; }
@@ -159,6 +231,7 @@
     if (post._tm) return Promise.resolve(post._tm);
     var key = 'm3.' + post.id, c = cget(key, function (e) { return e.v ? TTL.match : TTL.miss; });
     if (c) return Promise.resolve(c.v || null);
+    var generation = cacheGeneration;
     var tv = isTv(post), year = postYear(post), imdb = postImdb(post);
     var raw = (post.title && post.title.english) || '', titles = [stripYear(raw)];
     if (raw !== titles[0]) titles.push(raw);
@@ -176,7 +249,7 @@
     }
     // An IMDb ID is authoritative: a missing or wrong-type result must not become a fuzzy match.
     var p = (imdb ? viaImdb() : search(true).then(function (m) { return m || (year ? search(false) : null); }))
-      .then(function (m) { cput(key, m || 0); return m; });
+      .then(function (m) { if (generation === cacheGeneration) cput(key, m || 0); return m; });
     return p;
   };
 
@@ -195,14 +268,14 @@
       imdb: (j.external_ids && j.external_ids.imdb_id) || j.imdb_id || '',
       seasons: j.number_of_seasons || 0, cast: [], crew: [], recs: [], nets: [], next: null, nextSeason: null
     };
-    (cr.cast || []).slice(0, 16).forEach(function (c) { d.cast.push({ n: c.name, c: c.character || '', p: c.profile_path || '' }); });
+    (cr.cast || []).slice(0, 16).forEach(function (c) { d.cast.push({ id: c.id, n: c.name, c: c.character || '', p: c.profile_path || '' }); });
     var seen = {};
-    function addCrew(n, job, p) { if (!n || seen[n + job] || d.crew.length >= 8) return; seen[n + job] = 1; d.crew.push({ n: n, j: job, p: p || '' }); }
-    (j.created_by || []).forEach(function (c) { addCrew(c.name, 'Creator', c.profile_path); });
-    (cr.crew || []).forEach(function (c) { if (c.job === 'Director') addCrew(c.name, 'Director', c.profile_path); });
-    var w = 0; (cr.crew || []).forEach(function (c) { if (w < 2 && /^(Screenplay|Writer|Story)$/.test(c.job)) { w++; addCrew(c.name, 'Writer', c.profile_path); } });
-    var ep = 0; (cr.crew || []).forEach(function (c) { if (kind === 'tv' && ep < 2 && c.job === 'Executive Producer') { ep++; addCrew(c.name, 'Executive Producer', c.profile_path); } });
-    (cr.crew || []).forEach(function (c) { if (kind === 'movie' && c.job === 'Original Music Composer') addCrew(c.name, 'Composer', c.profile_path); });
+    function addCrew(person, job) { if (!person.name || seen[person.name + job] || d.crew.length >= 8) return; seen[person.name + job] = 1; d.crew.push({ id: person.id, n: person.name, j: job, p: person.profile_path || '' }); }
+    (j.created_by || []).forEach(function (c) { addCrew(c, 'Creator'); });
+    (cr.crew || []).forEach(function (c) { if (c.job === 'Director') addCrew(c, 'Director'); });
+    var w = 0; (cr.crew || []).forEach(function (c) { if (w < 2 && /^(Screenplay|Writer|Story)$/.test(c.job)) { w++; addCrew(c, 'Writer'); } });
+    var ep = 0; (cr.crew || []).forEach(function (c) { if (kind === 'tv' && ep < 2 && c.job === 'Executive Producer') { ep++; addCrew(c, 'Executive Producer'); } });
+    (cr.crew || []).forEach(function (c) { if (kind === 'movie' && c.job === 'Original Music Composer') addCrew(c, 'Composer'); });
     var nets = kind === 'tv' ? (j.networks || []) : (j.production_companies || []);
     var ns = {}; nets.forEach(function (n) { if (n.name && !ns[n.name] && d.nets.length < 2) { ns[n.name] = 1; d.nets.push(n.name); } });
     ((j.recommendations && j.recommendations.results) || []).forEach(function (r) { if (r.id) d.recs.push(slimItem(r, kind)); });
@@ -226,7 +299,7 @@
     return T.match(post).then(function (m) {
       if (!m) return null;
       var base = T.get('/' + m.kind + '/' + m.id, { language: 'en-US', append_to_response: 'credits,images,recommendations,external_ids', include_image_language: 'en,null' },
-        { ttl: m.kind === 'tv' ? 6 * HR : TTL.details, schema: m.kind === 'tv' ? 'schedule2' : '', slim: function (j) { return slimDetails(j, m.kind); } });
+        { ttl: m.kind === 'tv' ? 6 * HR : TTL.details, schema: 'person-credits1', slim: function (j) { return slimDetails(j, m.kind); } });
       var loc = N.lang === 'fa' ? T.get('/' + m.kind + '/' + m.id, { language: 'fa-IR' }, { ttl: TTL.details, slim: function (j) { return { tagline: j.tagline || '', overview: j.overview || '' }; } }).catch(function () { return null; }) : Promise.resolve(null);
       return Promise.all([base, loc]).then(function (r) {
         var d = r[0]; if (!r[1]) return d;
@@ -242,10 +315,10 @@
 
   /* ---------- TMDB item -> 30nama post ---------- */
   // 30nama sits behind Cloudflare rate limiting (HTTP 429 / "error code: 1015" -> 'bad json'): keep concurrency low, space out starts, back off on errors.
-  var q = [], active = 0, MAXC = 4, GAP = 150, lastStart = 0, pausedUntil = 0, pumpT = null;
+  var q = [], active = 0, MAXC = 4, GAP = 150, lastStart = 0, pumpT = null;
   function pump() {
     if (pumpT || active >= MAXC || !q.length) return;
-    var now = Date.now(), wait = Math.max(pausedUntil - now, lastStart + GAP - now, 0);
+    var now = Date.now(), wait = Math.max(lastStart + GAP - now, 0);
     if (wait > 0) { pumpT = setTimeout(function () { pumpT = null; pump(); }, wait); return; }
     var j = q.shift(); active++; lastStart = now;
     var p; try { p = Promise.resolve(j.fn()); } catch (e) { p = Promise.reject(e); }
@@ -253,16 +326,6 @@
     pump();
   }
   function pool(fn, foreground) { return new Promise(function (res, rej) { var job = { fn: fn, res: res, rej: rej, foreground: foreground }, i = 0; if (foreground) { while (i < q.length && q[i].foreground) i++; q.splice(i, 0, job); } else q.push(job); pump(); }); }
-  function retrying(fn, tries) {
-    return fn().catch(function (e) {
-      if (tries > 0 && /bad json|timeout|429/.test(e && e.message || '')) {
-        pausedUntil = Date.now() + 8000;
-        return new Promise(function (r) { setTimeout(r, 8000); }).then(function () { return retrying(fn, tries - 1); });
-      }
-      throw e;
-    });
-  }
-
   function slimPost(p) {
     return { id: p.id, post_type: p.post_type, options: p.options, info: p.info, title: p.title, plot: p.plot, genre: p.genre, image: p.image, score: p.score };
   }
@@ -299,23 +362,41 @@
     }
     return go(0);
   }
-  var rin = {};
+  var rin = {}, catalogueSession, catalogueLanguage, catalogueGeneration = 0;
+  function catalogueContext() {
+    if (catalogueSession !== N.session || catalogueLanguage !== N.lang) {
+      catalogueSession = N.session; catalogueLanguage = N.lang;
+      catalogueGeneration++;
+      rin = {}; feeds = {};
+    }
+    return catalogueGeneration;
+  }
   // it: slim TMDB item {id, kind, title, orig, year}; alive(): optional, false -> skipped (resolves null, uncached)
   T.resolve = function (it, alive, foreground) {
-    var key = 'r3.' + it.kind + it.id;
-    var c = cget(key, function (e) { return e.v ? TTL.res : TTL.miss; });
-    if (c) return Promise.resolve(c.v ? Object.assign({}, c.v) : null);
-    if (rin[key]) return rin[key].then(function (v) { return v ? Object.assign({}, v) : null; });
-    var p = pool(function () {
-      if (alive && !alive()) return { skipped: true };
-      return retrying(function () { return resolveNet(it, foreground); }, 2).then(function (post) { return { post: post }; });
-    }, foreground).then(function (r) {
-      delete rin[key];
-      if (r.skipped) return null;
-      var sp = r.post ? slimPost(r.post) : null; cput(key, sp || 0); return sp;
-    }, function () { delete rin[key]; return null; });
-    rin[key] = p;
-    return p.then(function (v) { return v ? Object.assign({}, v) : null; });
+    if (alive && !alive()) return Promise.resolve(null);
+    var context = catalogueContext(), generation = cacheGeneration;
+    var key = 'r4.' + context + '.' + it.kind + it.id;
+    function current() { return context === catalogueContext() && generation === cacheGeneration; }
+    function result(post) { return current() && (!alive || alive()) && post ? Object.assign({}, post) : null; }
+    var cached = mem[key];
+    if (cached && Date.now() - cached.t < (cached.v ? TTL.res : TTL.miss)) return Promise.resolve(result(cached.v));
+    if (!rin[key]) {
+      rin[key] = pool(function () {
+        if (!current()) return null;
+        return resolveNet(it, foreground);
+      }, foreground).then(function (post) {
+        if (!current()) return null;
+        delete rin[key];
+        var value = post ? slimPost(post) : null;
+        // Catalogue eligibility belongs to this session, never to persisted TMDB metadata.
+        memPut(key, { t: Date.now(), v: value });
+        return value;
+      }, function (error) {
+        if (current()) delete rin[key];
+        throw error;
+      });
+    }
+    return rin[key].then(result);
   };
 
   // TMDB orders the complete digital-release catalog before pagination. Filtering
@@ -337,9 +418,6 @@
             if (onPost) onPost(post); return post;
           }
           // Verified cached identities need neither primary metadata nor another search.
-          var cached = cget('r3.movie' + r.id, function (e) { return e.v ? TTL.res : TTL.miss; });
-          if (cached) return ready(cached.v ? Object.assign({}, cached.v) : null);
-          // Match re-releases against their original title/year and authoritative IMDb ID.
           return T.get('/movie/' + r.id, { language: 'en-US', append_to_response: 'external_ids' }, { ttl: TTL.details }).then(function (details) {
             if (alive && !alive()) return null;
             var it = slimItem(details, 'movie'); it.imdb = details.imdb_id || (details.external_ids && details.external_ids.imdb_id) || '';
@@ -361,6 +439,7 @@
     return T.get('/trending/' + kind + '/week', { language: 'en-US' }, {
       ttl: TTL.trend, slim: listSlim(kind)
     }).then(function (items) {
+      var failures = [];
       return Promise.all(items.map(function (it) {
         if (!alive() || !it.title || it.kind !== kind) return null;
         return T.resolve(it, alive, true).then(function (post) {
@@ -368,10 +447,12 @@
           if (!opts || opts.coming_soon || !(opts.stream || opts.free_stream)) return null;
           post._trendYear = it.year;
           return post;
-        });
-      }));
-    }).then(function (posts) {
-      return { posts: posts.filter(Boolean), pages: 1 };
+        }).catch(function (error) { failures.push(error); return null; });
+      })).then(function (posts) {
+        posts = posts.filter(Boolean);
+        if (!posts.length && failures.length) throw failures[0];
+        return { posts: posts, pages: 1 };
+      });
     });
   };
 
@@ -390,6 +471,7 @@
   var CAP = { trend: 16, fresh: 14, pop: 14 };
   var feeds = {};
   function makeFeed(name) {
+    var context = catalogueContext(), generation = cacheGeneration;
     var f = { name: name, t: Date.now(), items: [], done: false, subs: [], dead: false };
     function notify() { f.subs.slice().forEach(function (fn) { try { fn(f); } catch (e) {} }); }
     function finish() { f.done = true; notify(); }
@@ -397,6 +479,7 @@
     Promise.all(srcs.map(function (s) {
       return T.get(s.path, s.params, { ttl: TTL.trend, slim: listSlim(s.dk) }).catch(function () { return []; });
     })).then(function (lists) {
+      if (context !== catalogueContext() || generation !== cacheGeneration) return finish();
       var seen = {}, cands = [];
       lists.forEach(function (l) { l.forEach(function (it) { var k = it.kind + it.id; if (!seen[k] && it.title && it.pst) { seen[k] = 1; cands.push(it); } }); });
       // fresh series: most popular (well-known) first, obscure titles dropped
@@ -404,13 +487,13 @@
       if (!cands.length) return finish();
       var left = cands.length;
       cands.forEach(function (it, i) {
-        T.resolve(it, function () { return f.items.length < CAP[name]; }).then(function (post) {
+        T.resolve(it, function () { return context === catalogueContext() && generation === cacheGeneration && f.items.length < CAP[name]; }).then(function (post) {
           if (post && f.items.length < CAP[name]) {
             post._tm = { id: it.id, kind: it.kind }; post._bd = it.bd ? IMG + 'w1280' + it.bd : '';
             f.items.push({ post: post, tm: it, i: i }); notify();
           }
           if (--left === 0) finish();
-        });
+        }, function () { if (--left === 0) finish(); });
       });
     }).catch(finish);
     f.subscribe = function (fn) { f.subs.push(fn); if (f.items.length || f.done) { setTimeout(function () { if (f.subs.indexOf(fn) >= 0) fn(f); }, 0); } };
@@ -418,6 +501,7 @@
     return f;
   }
   T.feed = function (name) {
+    catalogueContext();
     var f = feeds[name];
     if (f && Date.now() - f.t < 10 * 60 * 1000 && !(f.done && !f.items.length)) return f;
     return (feeds[name] = makeFeed(name));
